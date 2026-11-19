@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output: the archives and the release manifest are produced by `npm run build`
+dist/
+*.tsbuildinfo
+
+# HMI core sources fetched for the native tests (`npm run setup:hmi-core`)
+.cache/
+
+# Downloaded STruC++ tarballs
+*.tgz
+
+# Test coverage
+coverage/
+
+# IDE and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+tmp/
