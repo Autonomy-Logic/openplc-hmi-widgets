@@ -1,0 +1,20 @@
+{
+  "name": "standard-widgets",
+  "displayName": "HMI Standard Widgets",
+  "version": "1.0.0",
+  "namespace": "hmi_widgets",
+  "description": "The OpenPLC HMI's element base, primitives, containers, display widgets, controls, process symbols, data widgets, keyboard, screen base and runtime.",
+  "kind": "hmi",
+  "headers": ["hmi_core.h"],
+  "sources": [
+    "types.st",
+    "primitives.st",
+    "element.st",
+    "containers.st",
+    "display.st",
+    "controls.st",
+    "process.st",
+    "data.st",
+    "screen.st"
+  ]
+}
