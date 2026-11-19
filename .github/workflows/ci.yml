@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, format and type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci && npm run setup:strucpp
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci && npm run setup:strucpp
+
+      - name: Fetch the HMI core
+        run: npm run setup:hmi-core
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build twice and compare
+        run: |
+          npm run build -- --out dist-a
+          npm run build
+          diff -r dist-a dist
+
+      - name: Native tests
+        run: npm run test:native
+
+      - name: Upload the archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: openplc-hmi-widgets
+          path: dist/
+          retention-days: 7
