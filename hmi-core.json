@@ -1,0 +1,7 @@
+{
+  "apiVersion": 1,
+  "source": {
+    "repository": "Autonomy-Logic/openplc-editor",
+    "ref": "823c59e645600f3e6a359d1cb3f0fdbc737f3827"
+  }
+}

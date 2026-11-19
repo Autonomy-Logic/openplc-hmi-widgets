@@ -1,0 +1,71 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Check the tag against package.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${VERSION}"
+            exit 1
+          fi
+
+      - name: Install dependencies and the pinned STruC++
+        run: npm ci && npm run setup:strucpp
+
+      - name: Fetch the HMI core
+        run: npm run setup:hmi-core
+
+      - name: Build twice and compare
+        run: |
+          npm run build -- --out dist-a
+          npm run build
+          diff -r dist-a dist
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Native tests
+        run: npm run test:native
+
+      - name: Verify the sums
+        run: cd dist && sha256sum -c SHA256SUMS
+
+      - name: Detect prerelease
+        id: prerelease
+        run: |
+          if [[ "${GITHUB_REF_NAME}" =~ (alpha|beta|rc) ]]; then
+            echo "flag=--prerelease" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp LICENSE LICENSING.md dist/
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            ${{ steps.prerelease.outputs.flag }} \
+            dist/*

@@ -1,0 +1,35 @@
+{
+  "name": "openplc-hmi-widgets",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenPLC HMI widget and PLC-side HMI libraries, released as STruC++ .stlib archives",
+  "license": "SEE LICENSE IN LICENSING.md",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup:strucpp": "tsx scripts/setup-strucpp.ts",
+    "setup:hmi-core": "tsx scripts/fetch-hmi-core.ts",
+    "build": "tsx scripts/build.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:native": "node tests/native/hmi-lib/run.mjs --cc \"gcc clang\" --sanitize && node tests/native/hmi-alarms/run.mjs --cc \"gcc clang\"",
+    "test:hmi-lib": "node tests/native/hmi-lib/run.mjs --cc \"gcc clang\" --sanitize",
+    "test:hmi-alarms": "node tests/native/hmi-alarms/run.mjs --cc \"gcc clang\"",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.30.1",
+    "@types/node": "22.15.34",
+    "eslint": "9.30.1",
+    "prettier": "3.5.3",
+    "tsx": "4.19.4",
+    "typescript": "5.8.3",
+    "typescript-eslint": "8.35.1",
+    "vitest": "3.2.4"
+  }
+}
