@@ -1,24 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (c) 2026 Autonomy®
 /**
- * Builds the release: each library of `libraries/` compiled into a STruC++ .stlib archive, the release manifest and the
+ * Builds the release: each library of `libraries/` compiled into a STruC++ .stlib archive, the licence files and the
  * SHA-256 sums. The output depends only on the sources, the configuration, the HMI core API version and the STruC++
  * version, so two builds are byte-identical.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { compileStlib, getVersion, type HeaderRequirement, loadStlibFromString, type StlibArchive } from 'strucpp'
+import { compileStlib, type HeaderRequirement, loadStlibFromString, type StlibArchive } from 'strucpp'
 
 import { type LibraryConfig, parseLibraryConfig } from './library-config.js'
-import {
-  LIBRARY_LICENSE,
-  RELEASE_MANIFEST_FILE,
-  RELEASE_MANIFEST_FORMAT,
-  type ReleaseArchive,
-  type ReleaseManifest,
-  SHA256SUMS_FILE,
-} from './release-manifest.js'
+import { LICENSE_FILES, type ReleaseArchive, SHA256SUMS_FILE } from './release-assets.js'
 import { sha256Hex } from './sha256.js'
 
 export interface BuildInput {
@@ -29,9 +22,11 @@ export interface BuildInput {
 }
 
 export interface BuildOutput {
-  /** Release assets by file name: the archives, the manifest and the sums. */
+  /** Release assets by file name: the archives, the licence files and the sums. */
   files: Map<string, string>
-  manifest: ReleaseManifest
+  /** Release version, without the `v` of its tag. */
+  version: string
+  archives: ReleaseArchive[]
 }
 
 export interface HmiCoreConfig {
@@ -160,12 +155,11 @@ function compileLibrary(
   }
 }
 
-/** Builds every library, the release manifest and the sums. */
+/** Builds every library, the licence files and the sums. */
 export function buildRelease(input: BuildInput): BuildOutput {
   let hmiCoreApi: number | undefined
   const coreApi = (): number => (hmiCoreApi ??= readHmiCoreApiVersion(input.coreDir ?? hmiCoreDir(input.root)))
   const version = readReleaseVersion(input.root)
-  const strucppVersion = getVersion()
   const loaded = new Map<string, StlibArchive>()
   const files = new Map<string, string>()
   const archives: ReleaseArchive[] = []
@@ -180,30 +174,12 @@ export function buildRelease(input: BuildInput): BuildOutput {
     const file = `${config.name}.stlib`
     const text = JSON.stringify(archive)
     files.set(file, text)
-    archives.push({
-      name: config.name,
-      displayName: config.displayName,
-      version: config.version,
-      file,
-      sha256: sha256Hex(text),
-      size: Buffer.byteLength(text, 'utf8'),
-      strucppVersion,
-      headers: [...config.headers],
-      license: LIBRARY_LICENSE,
-    })
+    archives.push({ name: config.name, file, sha256: sha256Hex(text) })
   }
-  const manifest: ReleaseManifest = {
-    formatVersion: RELEASE_MANIFEST_FORMAT,
-    name: 'openplc-hmi-widgets',
-    version,
-    strucppVersion,
-    archives,
-  }
-  const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
-  files.set(RELEASE_MANIFEST_FILE, manifestText)
+  for (const name of LICENSE_FILES) files.set(name, readFileSync(join(input.root, name), 'utf8'))
   const sums = [...files.entries()]
     .map(([name, text]) => `${sha256Hex(text)}  ${name}`)
-    .sort((a, b) => a.slice(66).localeCompare(b.slice(66)))
+    .sort((a, b) => (a.slice(66) < b.slice(66) ? -1 : 1))
   files.set(SHA256SUMS_FILE, `${sums.join('\n')}\n`)
-  return { files, manifest }
+  return { files, version, archives }
 }

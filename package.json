@@ -1,6 +1,6 @@
 {
   "name": "openplc-hmi-widgets",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "OpenPLC HMI widget and PLC-side HMI libraries, released as STruC++ .stlib archives",
   "license": "SEE LICENSE IN LICENSING.md",
