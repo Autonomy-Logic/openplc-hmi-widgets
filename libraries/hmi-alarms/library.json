@@ -4,7 +4,6 @@
   "version": "1.0.0",
   "namespace": "hmi_alarms",
   "description": "PLC-side alarm table, alarm summary and event log behind the HMI's alarm and event widgets.",
-  "kind": "plc",
   "headers": [],
   "sources": ["hmi_alarms.st"]
 }
