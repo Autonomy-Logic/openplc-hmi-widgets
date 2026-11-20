@@ -62,6 +62,17 @@ jobs:
       - name: Native tests
         run: npm run test:native
 
+      - name: Check that dist/ holds exactly the files SHA256SUMS lists
+        run: |
+          cd dist
+          expected="$( { awk '{ f = $2; sub(/^\*/, "", f); print f }' SHA256SUMS; echo SHA256SUMS; } | LC_ALL=C sort)"
+          actual="$(find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort)"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::dist/ does not hold exactly SHA256SUMS and the files it lists"
+            diff <(echo "$expected") <(echo "$actual") || true
+            exit 1
+          fi
+
       - name: Verify the sums
         run: cd dist && sha256sum -c SHA256SUMS
 
@@ -85,6 +96,17 @@ jobs:
         with:
           name: release-assets
           path: dist
+
+      - name: Check that dist/ holds exactly the files SHA256SUMS lists
+        run: |
+          cd dist
+          expected="$( { awk '{ f = $2; sub(/^\*/, "", f); print f }' SHA256SUMS; echo SHA256SUMS; } | LC_ALL=C sort)"
+          actual="$(find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort)"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::dist/ does not hold exactly SHA256SUMS and the files it lists"
+            diff <(echo "$expected") <(echo "$actual") || true
+            exit 1
+          fi
 
       - name: Verify the sums
         run: cd dist && sha256sum -c SHA256SUMS

@@ -59,8 +59,9 @@ Widget code calls the HMI C core (`hmi_core.h`), which lives in the OpenPLC Edit
 `HMI_CORE_API_VERSION` macro. The build reads that macro from the core at the editor commit `hmi-core.json` pins (or
 from `HMI_CORE_EDITOR_DIR`) and compiles every library that lists `hmi_core.h` against that version, so the archive's
 `manifest.headerVersions` and each chunk that needs the core carry it. `hmi_core.h` is the only header with a known API
-version; the build refuses any other header in `library.json`. The editor does not use a POU that needs another core
-API version than its own. To move to a new core API, pin `hmi-core.json` to the editor commit that
+version; the build refuses any other header in `library.json`. The editor leaves a library built for another core
+API version than its own out of HMI builds entirely, with a warning, and the editor's setup refuses a pinned release
+built for another core API version. To move to a new core API, pin `hmi-core.json` to the editor commit that
 raises the macro.
 
 ## Tests

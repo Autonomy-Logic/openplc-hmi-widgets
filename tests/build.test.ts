@@ -229,6 +229,21 @@ describe('header requirements', () => {
     }
   })
 
+  it('keeps the HMI core out of the C++ of every chunk that needs no header', () => {
+    const coreUse = /\bhmi_[a-z0-9_]*|#\s*include\s*[<"]hmi_core\.h[>"]/
+    let swept = 0
+    for (const name of readLibraries(ROOT).map((l) => l.config.name)) {
+      const library = archive(name)
+      for (const chunk of library.chunks) {
+        if (chunkHeaders(library, chunk).length > 0) continue
+        swept++
+        const used = coreUse.exec(`${chunk.header}\n${chunk.cpp}`)?.[0]
+        expect(used, `${name} ${chunk.name}`).toBeUndefined()
+      }
+    }
+    expect(swept).toBeGreaterThan(0)
+  })
+
   it('makes every POU of hmi-alarms usable by a PLC build with no headers', () => {
     const alarms = archive('hmi-alarms')
     expect(alarms.chunks.length).toBeGreaterThan(0)

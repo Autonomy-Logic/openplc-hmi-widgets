@@ -32,6 +32,7 @@ npm test
 npm run build && npm run test:native
 ```
 
-A change to a widget's attributes changes the committed catalogue in `tests/__snapshots__/`: review it, then update it
-with `npx vitest run -u`. A change that moves pixels changes `tests/native/hmi-lib/golden.txt`: review the frames with
-`--png <dir>`, then update it with `--update`.
+The editor derives the widget catalogue from the archive, so a change to a widget's attributes changes the catalogue
+fixture of openplc-editor and openplc-web, `src/backend/shared/hmi/lib/__tests__/fixtures/standard-widgets.catalog.json`
+in both: review it and update it in both repositories when they pin the release. A change that moves pixels changes
+`tests/native/hmi-lib/golden.txt`: review the frames with `--png <dir>`, then update it with `--update`.
