@@ -2,7 +2,7 @@
 
 The OpenPLC HMI widget libraries are dual-licensed. You can use them under the **GNU General Public License v3** or under a **commercial licence** from Autonomy Logic Inc.
 
-This covers every library of this repository and every archive a release publishes: the widget libraries (kind `hmi`) and the PLC-side HMI libraries (kind `plc`). Each archive states it in the release manifest as `GPL-3.0-only OR LicenseRef-Autonomy-Commercial`.
+This covers every library of this repository and every archive a release publishes, the widget libraries and the PLC-side HMI libraries alike. The SPDX expression is `GPL-3.0-only OR LicenseRef-Autonomy-Commercial`.
 
 ## GPLv3
 

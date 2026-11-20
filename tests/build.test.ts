@@ -27,12 +27,7 @@ import {
   readHmiCoreApiVersion,
   readLibraries,
 } from '../src/build.js'
-import {
-  LIBRARY_LICENSE,
-  RELEASE_MANIFEST_FILE,
-  RELEASE_MANIFEST_FORMAT,
-  SHA256SUMS_FILE,
-} from '../src/release-manifest.js'
+import { LICENSE_FILES, SHA256SUMS_FILE } from '../src/release-assets.js'
 import { sha256Hex } from '../src/sha256.js'
 import { pinnedStrucpp, ROOT } from '../scripts/pins.js'
 
@@ -50,6 +45,11 @@ function archiveText(name: string): string {
 
 function archive(name: string): StlibArchive {
   return loadStlibFromString(archiveText(name), `${name}.stlib`)
+}
+
+function rawManifest(name: string): unknown {
+  const raw: unknown = JSON.parse(archiveText(name))
+  return typeof raw === 'object' && raw !== null && 'manifest' in raw ? raw.manifest : undefined
 }
 
 function pous(name: string): PouRequirements[] {
@@ -72,7 +72,6 @@ function usable(p: PouRequirements, providedHeaders: HeaderRequirement[]): boole
 describe('release build', () => {
   it('uses the pinned STruC++', () => {
     expect(getVersion()).toBe(pinnedStrucpp().version.replace(/^v/, ''))
-    expect(first.manifest.strucppVersion).toBe(getVersion())
   })
 
   it('is byte-identical across builds', () => {
@@ -81,41 +80,38 @@ describe('release build', () => {
     for (const [name, text] of first.files) expect(second.files.get(name), name).toBe(text)
   })
 
-  it('writes one archive per library, the manifest and the sums', () => {
+  it('writes one archive per library, the licence files and the sums, and nothing else', () => {
     const names = readLibraries(ROOT).map((l) => `${l.config.name}.stlib`)
-    expect([...first.files.keys()].sort()).toEqual([...names, RELEASE_MANIFEST_FILE, SHA256SUMS_FILE].sort())
+    expect([...first.files.keys()].sort()).toEqual([...names, ...LICENSE_FILES, SHA256SUMS_FILE].sort())
+  })
+
+  it('copies the licence files verbatim', () => {
+    for (const name of LICENSE_FILES) expect(first.files.get(name)).toBe(readFileSync(join(ROOT, name), 'utf8'))
   })
 
   it('archives load through the STruC++ archive parser', () => {
-    for (const a of first.manifest.archives) {
-      const archive = loadStlibFromString(archiveText(a.name), a.file)
-      expect(archive.manifest.name).toBe(a.name)
-      expect(archive.manifest.version).toBe(a.version)
-      expect(archive.manifest.headers).toEqual(a.headers)
+    for (const { config } of readLibraries(ROOT)) {
+      const archive = loadStlibFromString(archiveText(config.name), `${config.name}.stlib`)
+      expect(archive.manifest.name).toBe(config.name)
+      expect(archive.manifest.version).toBe(config.version)
+      expect(archive.manifest.headers).toEqual(config.headers)
       expect(archive.chunks.length).toBeGreaterThan(0)
     }
   })
 
-  it('describes every archive with its hash and size, in manifest format 2 without kinds or catalogues', () => {
-    const { manifest } = first
-    expect(manifest.formatVersion).toBe(2)
-    expect(RELEASE_MANIFEST_FORMAT).toBe(2)
+  it('reports each archive with its hash, and the package version', () => {
     const pkg: unknown = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
-    expect(pkg).toMatchObject({ version: manifest.version })
-    for (const a of manifest.archives) {
-      const text = archiveText(a.name)
-      expect(Object.keys(a).sort()).toEqual(
-        ['displayName', 'file', 'headers', 'license', 'name', 'sha256', 'size', 'strucppVersion', 'version'].sort(),
-      )
-      expect(a.sha256).toBe(sha256Hex(text))
-      expect(a.size).toBe(Buffer.byteLength(text))
-      expect(a.license).toBe(LIBRARY_LICENSE)
-    }
-    expect(JSON.parse(first.files.get(RELEASE_MANIFEST_FILE) ?? '')).toEqual(manifest)
+    expect(pkg).toMatchObject({ version: first.version })
+    expect(first.archives.map((a) => a.file).sort()).toEqual(
+      readLibraries(ROOT)
+        .map((l) => `${l.config.name}.stlib`)
+        .sort(),
+    )
+    for (const a of first.archives) expect(a.sha256).toBe(sha256Hex(archiveText(a.name)))
   })
 
   it('writes plain STruC++ archives, with no openplc key', () => {
-    for (const a of first.manifest.archives) {
+    for (const a of first.archives) {
       const parsed: unknown = JSON.parse(archiveText(a.name))
       expect(parsed).not.toHaveProperty('openplc')
       expect(Object.keys(parsed ?? {}).sort()).toEqual(
@@ -126,10 +122,11 @@ describe('release build', () => {
 
   it('lists the headers each library includes, hmi_core.h at the core API version', () => {
     const hmiCoreApi = String(readHmiCoreApiVersion(hmiCoreDir(ROOT)))
-    const widgets = first.manifest.archives.find((a) => a.name === 'standard-widgets')
-    const alarms = first.manifest.archives.find((a) => a.name === 'hmi-alarms')
-    expect(widgets).toMatchObject({ displayName: 'HMI Standard Widgets', headers: ['hmi_core.h'] })
-    expect(alarms).toMatchObject({ displayName: 'HMI Alarms', headers: [] })
+    expect(rawManifest('standard-widgets')).toMatchObject({
+      displayName: 'HMI Standard Widgets',
+      headers: ['hmi_core.h'],
+    })
+    expect(rawManifest('hmi-alarms')).toMatchObject({ displayName: 'HMI Alarms', headers: [] })
     expect(archive('standard-widgets').manifest.headerVersions).toEqual({ 'hmi_core.h': hmiCoreApi })
     expect(archive('hmi-alarms').manifest.headerVersions).toBeUndefined()
   })
