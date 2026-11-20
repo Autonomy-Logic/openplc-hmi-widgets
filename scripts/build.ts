@@ -28,7 +28,7 @@ function main(): void {
   rmSync(out, { recursive: true, force: true })
   mkdirSync(out, { recursive: true })
   for (const [name, text] of files) writeFileSync(join(out, name), text)
-  for (const a of manifest.archives) console.log(`${a.file}  ${a.kind}  ${a.sha256}`)
+  for (const a of manifest.archives) console.log(`${a.file}  ${a.sha256}`)
   console.log(`[build] openplc-hmi-widgets ${manifest.version} written to ${out}`)
 }
 

@@ -51,7 +51,7 @@ Integration branch: `development`. Jira project: `DOPE`.
 npm ci && npm run setup:strucpp   # dependencies, then the STruC++ pinned (with its SHA-256) in binary-versions.json
 npm run setup:hmi-core            # HMI core, fonts and font table step at the editor commit in hmi-core.json
 npm run build                     # dist/: <library>.stlib, openplc-hmi-widgets.json, SHA256SUMS
-npm test                          # Vitest: build, determinism, manifest, catalogue vs. sources
+npm test                          # Vitest: build, determinism, manifest, per-POU header requirements
 npm run test:native               # needs build + setup:hmi-core: frame and scan goldens on gcc and clang
 npm run typecheck && npm run lint && npm run format:check
 ```
@@ -63,16 +63,17 @@ by commit SHA; keep them so, and keep `persist-credentials: false` on checkouts.
 
 ## Architecture
 
-- `libraries/<name>/`: `library.json` (STruC++ identity fields plus `kind`, `headers`, `sources` in compile order,
-  `dependencies` on other libraries here) and the `.st` files. The folder is named after the library.
-- `src/build.ts`: compiles each library with `compileStlib` in dependency order, sets `displayName`/`description`,
-  reloads the archive through `loadStlibFromString`, adds the `openplc` metadata key, writes the release manifest and
-  `SHA256SUMS`. Output must stay deterministic: no timestamps, no map iteration over unordered input.
-- `src/catalog.ts`: the widget catalogue from a compiled manifest's `hmi_*` attributes. Its output is a contract with
-  the editor (`src/catalog-types.ts`); the editor computes the same catalogue for a project's own widget blocks, so a
-  change here needs the matching change there.
-- `src/release-manifest.ts`: release manifest and archive metadata formats. Bump `RELEASE_MANIFEST_FORMAT` or
-  `ARCHIVE_METADATA_FORMAT` for any incompatible change; consumers refuse formats they do not know.
+- `libraries/<name>/`: `library.json` (STruC++ identity fields plus `headers`, `sources` in compile order,
+  `dependencies` on other libraries here) and the `.st` files. The folder is named after the library. There are no
+  library kinds: where a POU can be used follows from the headers its chunk needs.
+- `src/build.ts`: compiles each library with `compileStlib` in dependency order, with `hmi_core.h` at the core API
+  version (any other header is refused), sets `displayName`/`description`, reloads the archive through
+  `loadStlibFromString`, writes the plain archives, the release manifest and `SHA256SUMS`. Output must stay
+  deterministic: no timestamps, no map iteration over unordered input.
+- `{external}` code: a POU whose code does not call the HMI core says so with `{attribute 'headers' := ''}`, so its
+  chunk needs no header and a PLC build can use it. Without it, every POU with `{external}` code needs `hmi_core.h`.
+- `src/release-manifest.ts`: the release manifest format. Bump `RELEASE_MANIFEST_FORMAT` for any incompatible change;
+  consumers refuse formats they do not know. The editor owns the widget catalogue, derived from the archives' manifests.
 - `hmi-core.json`: `source.ref` is the editor commit the HMI core comes from. The build reads the core API version from
   that core's `HMI_CORE_API_VERSION` macro (`hmi_core.h`), so the build needs `setup:hmi-core` (or
   `HMI_CORE_EDITOR_DIR`); the editor does not use archives built for another API version.
@@ -83,6 +84,6 @@ by commit SHA; keep them so, and keep `persist-credentials: false` on checkouts.
 - TypeScript strict, ESM, Node 22. No `any`, no `as` assertions (`as const` is allowed), no non-null `!`.
 - Prettier: 120 columns, no semicolons, single quotes, trailing commas. ESLint with type-checked rules.
 - Every TypeScript and script file starts with the SPDX line `GPL-3.0-only` and the Autonomy copyright line.
-- Changing a widget's attributes changes `tests/__snapshots__/standard-widgets.catalog.json`; changing drawing changes
-  `tests/native/hmi-lib/golden.txt`. Review the diff before updating either.
+- Changing drawing changes `tests/native/hmi-lib/golden.txt`. Review the diff before updating it. Changing a widget's
+  `hmi_*` attributes changes the editor's catalogue, which the editor tests.
 - Library names, namespaces and versions are what projects and the editor refer to: do not rename them.

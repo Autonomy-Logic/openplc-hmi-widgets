@@ -4,13 +4,24 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { getVersion, loadStlibFromString } from 'strucpp'
+import {
+  chunkHeaders,
+  findUnmetRequirements,
+  getVersion,
+  type HeaderRequirement,
+  loadStlibFromString,
+  type PouRequirements,
+  resolvePouRequirements,
+  type StlibArchive,
+} from 'strucpp'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import {
   buildRelease,
   type BuildOutput,
   HMI_CORE_HEADER,
+  HMI_CORE_HEADER_NAME,
+  headerRequirements,
   hmiCoreDir,
   parseHmiCoreApiVersion,
   readHmiCoreApiVersion,
@@ -35,6 +46,27 @@ function archiveText(name: string): string {
   const text = first.files.get(`${name}.stlib`)
   if (text === undefined) throw new Error(`no ${name}.stlib`)
   return text
+}
+
+function archive(name: string): StlibArchive {
+  return loadStlibFromString(archiveText(name), `${name}.stlib`)
+}
+
+function pous(name: string): PouRequirements[] {
+  const all = ['standard-widgets', 'hmi-alarms'].map(archive)
+  const own = all.find((a) => a.manifest.name === name)
+  if (!own) throw new Error(`no archive ${name}`)
+  return resolvePouRequirements(own, all)
+}
+
+function pou(library: string, name: string): PouRequirements {
+  const found = pous(library).find((p) => p.name === name)
+  if (!found) throw new Error(`no chunk ${name} in ${library}`)
+  return found
+}
+
+function usable(p: PouRequirements, providedHeaders: HeaderRequirement[]): boolean {
+  return findUnmetRequirements(p.requirements, { providedHeaders }).length === 0
 }
 
 describe('release build', () => {
@@ -64,31 +96,47 @@ describe('release build', () => {
     }
   })
 
-  it('describes every archive with its hash, size and kind', () => {
+  it('describes every archive with its hash and size, in manifest format 2 without kinds or catalogues', () => {
     const { manifest } = first
-    expect(manifest.formatVersion).toBe(RELEASE_MANIFEST_FORMAT)
+    expect(manifest.formatVersion).toBe(2)
+    expect(RELEASE_MANIFEST_FORMAT).toBe(2)
     const pkg: unknown = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
     expect(pkg).toMatchObject({ version: manifest.version })
     for (const a of manifest.archives) {
       const text = archiveText(a.name)
+      expect(Object.keys(a).sort()).toEqual(
+        ['displayName', 'file', 'headers', 'license', 'name', 'sha256', 'size', 'strucppVersion', 'version'].sort(),
+      )
       expect(a.sha256).toBe(sha256Hex(text))
       expect(a.size).toBe(Buffer.byteLength(text))
       expect(a.license).toBe(LIBRARY_LICENSE)
-      const parsed: unknown = JSON.parse(text)
-      expect(parsed).toMatchObject({ openplc: { formatVersion: 1, kind: a.kind, license: LIBRARY_LICENSE } })
     }
     expect(JSON.parse(first.files.get(RELEASE_MANIFEST_FILE) ?? '')).toEqual(manifest)
   })
 
-  it('marks the widget library hmi with the core API it needs, and the alarms library plc', () => {
-    const hmiCoreApi = readHmiCoreApiVersion(hmiCoreDir(ROOT))
+  it('writes plain STruC++ archives, with no openplc key', () => {
+    for (const a of first.manifest.archives) {
+      const parsed: unknown = JSON.parse(archiveText(a.name))
+      expect(parsed).not.toHaveProperty('openplc')
+      expect(Object.keys(parsed ?? {}).sort()).toEqual(
+        ['chunks', 'dependencies', 'formatVersion', 'manifest', 'sources'].sort(),
+      )
+    }
+  })
+
+  it('lists the headers each library includes, hmi_core.h at the core API version', () => {
+    const hmiCoreApi = String(readHmiCoreApiVersion(hmiCoreDir(ROOT)))
     const widgets = first.manifest.archives.find((a) => a.name === 'standard-widgets')
     const alarms = first.manifest.archives.find((a) => a.name === 'hmi-alarms')
-    expect(widgets).toMatchObject({ kind: 'hmi', hmiCoreApi, headers: ['hmi_core.h'] })
-    expect(alarms).toMatchObject({ kind: 'plc', headers: [], displayName: 'HMI Alarms' })
-    expect(JSON.parse(archiveText('standard-widgets'))).toMatchObject({
-      openplc: { kind: 'hmi', hmiCoreApi },
-    })
+    expect(widgets).toMatchObject({ displayName: 'HMI Standard Widgets', headers: ['hmi_core.h'] })
+    expect(alarms).toMatchObject({ displayName: 'HMI Alarms', headers: [] })
+    expect(archive('standard-widgets').manifest.headerVersions).toEqual({ 'hmi_core.h': hmiCoreApi })
+    expect(archive('hmi-alarms').manifest.headerVersions).toBeUndefined()
+  })
+
+  it('records the libraries each archive uses: none', () => {
+    expect(archive('standard-widgets').dependencies).toEqual([])
+    expect(archive('hmi-alarms').dependencies).toEqual([])
   })
 
   it('lists every file in SHA256SUMS', () => {
@@ -124,10 +172,64 @@ describe('HMI core API version', () => {
       const header = join(coreDir, HMI_CORE_HEADER)
       mkdirSync(dirname(header), { recursive: true })
       writeFileSync(header, '#define HMI_CORE_API_VERSION 7\n')
-      const { manifest } = buildRelease({ root: ROOT, coreDir })
-      expect(manifest.archives.find((a) => a.name === 'standard-widgets')).toMatchObject({ hmiCoreApi: 7 })
+      const { files } = buildRelease({ root: ROOT, coreDir })
+      const widgets = loadStlibFromString(files.get('standard-widgets.stlib') ?? '', 'standard-widgets.stlib')
+      expect(widgets.manifest.headerVersions).toEqual({ 'hmi_core.h': '7' })
+      const element = widgets.chunks.find((c) => c.name === 'HMIELEMENT')
+      expect(element?.headers).toEqual([{ name: 'hmi_core.h', version: '7' }])
     } finally {
       rmSync(coreDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('header requirements', () => {
+  it('versions hmi_core.h only, and refuses a header with no known API version', () => {
+    const config = { ...readLibraries(ROOT)[0].config, name: 'x', headers: [HMI_CORE_HEADER_NAME] }
+    expect(headerRequirements(config, () => 4)).toEqual([{ name: 'hmi_core.h', version: '4' }])
+    expect(headerRequirements({ ...config, headers: [] }, () => 4)).toEqual([])
+    expect(() => headerRequirements({ ...config, headers: ['can.h'] }, () => 4)).toThrow('can.h has no known API')
+  })
+
+  it('makes the element base and the widgets need hmi_core.h at the core API version', () => {
+    const core = { name: 'hmi_core.h', version: String(readHmiCoreApiVersion(hmiCoreDir(ROOT))) }
+    for (const name of ['HMIELEMENT', 'HMIBUTTON', 'HMIGAUGE', 'HMISCREEN', 'HMI_FILLRECT']) {
+      const p = pou('standard-widgets', name)
+      expect(
+        p.requirements.filter((r) => r.kind === 'header').map((r) => ({ name: r.name, version: r.version })),
+        name,
+      ).toEqual([core])
+      expect(usable(p, []), name).toBe(false)
+      expect(usable(p, [core]), name).toBe(true)
+      expect(usable(p, [{ name: 'hmi_core.h', version: `${core.version}0` }]), name).toBe(false)
+    }
+  })
+
+  it('makes a widget with no external code need the core through the chunks it reaches', () => {
+    const button = archive('standard-widgets').chunks.find((c) => c.name === 'HMIBUTTON')
+    expect(button?.deps.some((d) => d.name === 'HMIELEMENT')).toBe(true)
+    const requirements = pou('standard-widgets', 'HMIBUTTON').requirements
+    expect(requirements.length).toBeGreaterThan(0)
+    for (const r of requirements) expect(r.via).not.toEqual({ library: 'standard-widgets', name: 'HMIBUTTON' })
+  })
+
+  it('leaves the pure types of the widget library free of headers', () => {
+    const widgets = archive('standard-widgets')
+    const types = widgets.chunks.filter((c) => c.kind === 'type')
+    expect(types.map((c) => c.name)).toEqual(expect.arrayContaining(['HMI_ALIGN', 'HMI_COLORS', 'IHMIELEMENT']))
+    for (const chunk of types) {
+      expect(chunkHeaders(widgets, chunk), chunk.name).toEqual([])
+      expect(usable(pou('standard-widgets', chunk.name), []), chunk.name).toBe(true)
+    }
+  })
+
+  it('makes every POU of hmi-alarms usable by a PLC build with no headers', () => {
+    const alarms = archive('hmi-alarms')
+    expect(alarms.chunks.length).toBeGreaterThan(0)
+    for (const chunk of alarms.chunks) expect(chunkHeaders(alarms, chunk), chunk.name).toEqual([])
+    for (const p of pous('hmi-alarms')) {
+      expect(p.requirements, p.name).toEqual([])
+      expect(usable(p, []), p.name).toBe(true)
     }
   })
 })
