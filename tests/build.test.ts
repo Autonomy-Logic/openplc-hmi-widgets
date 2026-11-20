@@ -223,6 +223,15 @@ describe('header requirements', () => {
     }
   })
 
+  it('leaves external code that does not call the core, and what reaches only it, free of headers', () => {
+    const widgets = archive('standard-widgets')
+    for (const name of ['HMI_PARSEREAL', 'HMI_DTNANOS', 'HMICALENDAR']) {
+      const chunk = widgets.chunks.find((c) => c.name === name)
+      expect(chunk && chunkHeaders(widgets, chunk), name).toEqual([])
+      expect(usable(pou('standard-widgets', name), []), name).toBe(true)
+    }
+  })
+
   it('makes every POU of hmi-alarms usable by a PLC build with no headers', () => {
     const alarms = archive('hmi-alarms')
     expect(alarms.chunks.length).toBeGreaterThan(0)
