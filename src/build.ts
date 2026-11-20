@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (c) 2026 Autonomy®
 /**
- * Builds the release: each library of `libraries/` compiled into a STruC++ .stlib archive with its `openplc` metadata,
- * the release manifest and the SHA-256 sums. The output depends only on the sources, the configuration and the
- * STruC++ version, so two builds are byte-identical.
+ * Builds the release: each library of `libraries/` compiled into a STruC++ .stlib archive, the release manifest and the
+ * SHA-256 sums. The output depends only on the sources, the configuration, the HMI core API version and the STruC++
+ * version, so two builds are byte-identical.
  */
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { compileStlib, getVersion, type LibraryManifest, loadStlibFromString, type StlibArchive } from 'strucpp'
+import { compileStlib, getVersion, type HeaderRequirement, loadStlibFromString, type StlibArchive } from 'strucpp'
 
-import { buildWidgetCatalog } from './catalog.js'
 import { type LibraryConfig, parseLibraryConfig } from './library-config.js'
 import {
-  ARCHIVE_METADATA_FORMAT,
-  type ArchiveMetadata,
   LIBRARY_LICENSE,
   RELEASE_MANIFEST_FILE,
   RELEASE_MANIFEST_FORMAT,
@@ -27,6 +24,8 @@ import { sha256Hex } from './sha256.js'
 export interface BuildInput {
   /** Repository root: `libraries/`, `hmi-core.json` and `package.json` are read from it. */
   root: string
+  /** Editor tree whose HMI core header gives the core API version; `hmiCoreDir(root)` when absent. */
+  coreDir?: string
 }
 
 export interface BuildOutput {
@@ -36,23 +35,54 @@ export interface BuildOutput {
 }
 
 export interface HmiCoreConfig {
-  apiVersion: number
   source: { repository: string; ref: string }
 }
+
+/** Path of the HMI core header in an editor tree. */
+export const HMI_CORE_HEADER = 'resources/sources/hmi/core/hmi_core.h'
+
+/** Name of the HMI core header as libraries include it. */
+export const HMI_CORE_HEADER_NAME = 'hmi_core.h'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Reads `hmi-core.json`: the HMI core API version the widget libraries are written for, and where the core lives. */
+/** Reads `hmi-core.json`: the editor repository and commit the HMI core is taken from. */
 export function readHmiCoreConfig(root: string): HmiCoreConfig {
   const raw: unknown = JSON.parse(readFileSync(join(root, 'hmi-core.json'), 'utf8'))
-  if (!isRecord(raw) || !Number.isInteger(raw.apiVersion) || typeof raw.apiVersion !== 'number' || raw.apiVersion < 1)
-    throw new Error('hmi-core.json: "apiVersion" must be a positive integer')
-  const source = raw.source
+  const source = isRecord(raw) ? raw.source : undefined
   if (!isRecord(source) || typeof source.repository !== 'string' || typeof source.ref !== 'string')
     throw new Error('hmi-core.json: "source" must name a repository and a ref')
-  return { apiVersion: raw.apiVersion, source: { repository: source.repository, ref: source.ref } }
+  return { source: { repository: source.repository, ref: source.ref } }
+}
+
+/** The editor tree the HMI core comes from: `HMI_CORE_EDITOR_DIR`, else the commit `hmi-core.json` pins, as fetched. */
+export function hmiCoreDir(root: string): string {
+  const fromEnv = process.env.HMI_CORE_EDITOR_DIR
+  if (fromEnv) return fromEnv
+  return join(root, '.cache', 'hmi-core', readHmiCoreConfig(root).source.ref)
+}
+
+/** The value of the single `HMI_CORE_API_VERSION` macro in the text of an HMI core header. */
+export function parseHmiCoreApiVersion(header: string): number {
+  const defines = [...header.matchAll(/^[ \t]*#[ \t]*define[ \t]+HMI_CORE_API_VERSION[ \t]+(\d+)u?[ \t]*$/gm)]
+  if (defines.length !== 1)
+    throw new Error(`defines HMI_CORE_API_VERSION ${defines.length} times, expected once as a positive integer`)
+  const version = Number(defines[0][1])
+  if (!Number.isSafeInteger(version) || version < 1) throw new Error('HMI_CORE_API_VERSION must be a positive integer')
+  return version
+}
+
+/** The HMI core API version the widget libraries are built for: the `HMI_CORE_API_VERSION` macro of the core header. */
+export function readHmiCoreApiVersion(coreDir: string): number {
+  const file = join(coreDir, HMI_CORE_HEADER)
+  if (!existsSync(file)) throw new Error(`${file} is missing: run npm run setup:hmi-core`)
+  try {
+    return parseHmiCoreApiVersion(readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw new Error(`${file} ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
 /** The release version, from `package.json`. */
@@ -94,13 +124,27 @@ export function readLibraries(root: string): Array<{ dir: string; config: Librar
   return ordered
 }
 
-function compileLibrary(dir: string, config: LibraryConfig, dependencies: StlibArchive[]): StlibArchive {
+/** The headers a library is compiled against, each with its API version; `coreApi` gives the HMI core's. */
+export function headerRequirements(config: LibraryConfig, coreApi: () => number): HeaderRequirement[] {
+  return config.headers.map((name) => {
+    if (name !== HMI_CORE_HEADER_NAME)
+      throw new Error(`${config.name}: header ${name} has no known API version; only ${HMI_CORE_HEADER_NAME} has one`)
+    return { name, version: String(coreApi()) }
+  })
+}
+
+function compileLibrary(
+  dir: string,
+  config: LibraryConfig,
+  headers: HeaderRequirement[],
+  dependencies: StlibArchive[],
+): StlibArchive {
   const sources = config.sources.map((fileName) => ({ fileName, source: readFileSync(join(dir, fileName), 'utf8') }))
   const result = compileStlib(sources, {
     name: config.name,
     version: config.version,
     namespace: config.namespace,
-    headers: [...config.headers],
+    headers,
     dependencies,
   })
   if (result.errors.length > 0) {
@@ -118,7 +162,8 @@ function compileLibrary(dir: string, config: LibraryConfig, dependencies: StlibA
 
 /** Builds every library, the release manifest and the sums. */
 export function buildRelease(input: BuildInput): BuildOutput {
-  const core = readHmiCoreConfig(input.root)
+  let hmiCoreApi: number | undefined
+  const coreApi = (): number => (hmiCoreApi ??= readHmiCoreApiVersion(input.coreDir ?? hmiCoreDir(input.root)))
   const version = readReleaseVersion(input.root)
   const strucppVersion = getVersion()
   const loaded = new Map<string, StlibArchive>()
@@ -130,26 +175,12 @@ export function buildRelease(input: BuildInput): BuildOutput {
       if (!dep) throw new Error(`${config.name}: dependency ${name} was not built`)
       return dep
     })
-    const archive = compileLibrary(dir, config, dependencies)
-    const reloaded = loadStlibFromString(JSON.stringify(archive), config.name)
-    loaded.set(config.name, reloaded)
-    const metadata: ArchiveMetadata =
-      config.kind === 'hmi'
-        ? {
-            formatVersion: ARCHIVE_METADATA_FORMAT,
-            kind: 'hmi',
-            license: LIBRARY_LICENSE,
-            hmiCoreApi: core.apiVersion,
-            catalog: buildWidgetCatalog(
-              reloaded.manifest,
-              dependencies.map((d): LibraryManifest => d.manifest),
-            ),
-          }
-        : { formatVersion: ARCHIVE_METADATA_FORMAT, kind: 'plc', license: LIBRARY_LICENSE }
+    const archive = compileLibrary(dir, config, headerRequirements(config, coreApi), dependencies)
+    loaded.set(config.name, loadStlibFromString(JSON.stringify(archive), config.name))
     const file = `${config.name}.stlib`
-    const text = JSON.stringify({ ...archive, openplc: metadata })
+    const text = JSON.stringify(archive)
     files.set(file, text)
-    const common = {
+    archives.push({
       name: config.name,
       displayName: config.displayName,
       version: config.version,
@@ -159,12 +190,7 @@ export function buildRelease(input: BuildInput): BuildOutput {
       strucppVersion,
       headers: [...config.headers],
       license: LIBRARY_LICENSE,
-    }
-    archives.push(
-      metadata.kind === 'hmi'
-        ? { ...common, kind: 'hmi', hmiCoreApi: metadata.hmiCoreApi, catalog: metadata.catalog }
-        : { ...common, kind: 'plc' },
-    )
+    })
   }
   const manifest: ReleaseManifest = {
     formatVersion: RELEASE_MANIFEST_FORMAT,

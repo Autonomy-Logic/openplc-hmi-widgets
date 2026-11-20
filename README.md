@@ -4,25 +4,25 @@ The ST libraries of the OpenPLC HMI, released as native [STruC++](https://github
 archives. The OpenPLC Editor and OpenPLC Web download a pinned release and ship its archives pre-installed: they cannot
 be removed, and further widget libraries install through the editor's library manager.
 
-| Library                                   | Kind  | What it is                                                                                                                                                         |
-| ----------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `standard-widgets` (HMI Standard Widgets) | `hmi` | Element base, primitives, containers, display widgets, controls, process symbols, data widgets, keyboard, screen base and runtime                                  |
-| `hmi-alarms` (HMI Alarms)                 | `plc` | `HMI_ALARM`, `HMI_ALARMS`, `HMI_ALARM_LOGGER`, `HMI_LOG_EVENT`, `HMI_ALARM_ROW`, `HMI_ALARM_SUMMARY`, `HMI_EVENT_ROW`: the PLC side of the alarm and event widgets |
+| Library                                   | What it is                                                                                                                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `standard-widgets` (HMI Standard Widgets) | Element base, primitives, containers, display widgets, controls, process symbols, data widgets, keyboard, screen base and runtime                                  |
+| `hmi-alarms` (HMI Alarms)                 | `HMI_ALARM`, `HMI_ALARMS`, `HMI_ALARM_LOGGER`, `HMI_LOG_EVENT`, `HMI_ALARM_ROW`, `HMI_ALARM_SUMMARY`, `HMI_EVENT_ROW`: the PLC side of the alarm and event widgets |
 
-A library of kind `hmi` feeds the HMI designer's palette and the HMI build; a library of kind `plc` is a PLC library
-like any other and shows in the editor's PLC library panel.
+Every archive is a plain STruC++ library; there are no library kinds. Each chunk (POU) of an archive records the
+headers it needs, so a consumer decides per POU where it can be used: a POU that needs `hmi_core.h` only in an HMI
+build, a POU that needs no header in a PLC build as well. Every POU of `hmi-alarms` needs no header.
 
 ## Layout
 
 ```
-libraries/<name>/library.json   identity, kind, headers, sources in compile order, dependencies
+libraries/<name>/library.json   identity, headers, sources in compile order, dependencies
 libraries/<name>/*.st           the ST source
-src/                            the build: catalogue, release manifest, library configuration
+src/                            the build: release manifest, library configuration
 scripts/                        setup-strucpp, fetch-hmi-core, build
 tests/                          unit tests (Vitest) and the native frame tests (tests/native/)
-binary-versions.json            the pinned STruC++ release
-hmi-core.json                   the HMI core API version the widget libraries need, and the editor commit the native
-                                tests take the core from
+binary-versions.json            the pinned STruC++ release and the SHA-256 of its tarball
+hmi-core.json                   the editor commit the HMI core (its API version, and the native tests' core) comes from
 ```
 
 `standard-widgets` is one archive. Its categories all extend `HmiElement`, draw through the screen runtime, use the
@@ -33,7 +33,8 @@ would each depend on a base archive and add load and dependency handling without
 
 ```bash
 npm ci
-npm run setup:strucpp      # the STruC++ pinned in binary-versions.json
+npm run setup:strucpp      # the STruC++ pinned in binary-versions.json, checked against its SHA-256
+npm run setup:hmi-core     # the HMI core at the editor commit hmi-core.json pins
 npm run build              # dist/: one .stlib per library, openplc-hmi-widgets.json, SHA256SUMS
 ```
 
@@ -41,26 +42,16 @@ The build refuses any STruC++ but the pinned one, and two builds are byte-identi
 
 ## Release assets
 
-- `<library>.stlib`: a STruC++ archive (format 1) with one extra top-level key, `openplc`, that STruC++ ignores:
+- `<library>.stlib`: a plain STruC++ archive (format 1). Its `dependencies` lists the libraries its code uses, and
+  each chunk's `headers` the headers that chunk needs, transitively, with their API version (`hmi_core.h` at the HMI
+  core API version). The editor derives the widget catalogue from the archive's manifest, which carries the `hmi_*`
+  attribute pragmas of the source.
+
+- `openplc-hmi-widgets.json`, the release manifest (format 2):
 
   ```json
   {
-    "formatVersion": 1,
-    "kind": "hmi",
-    "license": "GPL-3.0-only OR LicenseRef-Autonomy-Commercial",
-    "hmiCoreApi": 1,
-    "catalog": { "widgets": [], "colors": [] }
-  }
-  ```
-
-  `hmiCoreApi` and `catalog` are present for kind `hmi` only. The editor reads the archive alone, so a widget library a
-  user installs carries everything the editor needs.
-
-- `openplc-hmi-widgets.json`, the release manifest (format 1):
-
-  ```json
-  {
-    "formatVersion": 1,
+    "formatVersion": 2,
     "name": "openplc-hmi-widgets",
     "version": "1.0.0",
     "strucppVersion": "0.8.1-rc1",
@@ -69,37 +60,34 @@ The build refuses any STruC++ but the pinned one, and two builds are byte-identi
         "name": "standard-widgets",
         "displayName": "HMI Standard Widgets",
         "version": "1.0.0",
-        "kind": "hmi",
         "file": "standard-widgets.stlib",
         "sha256": "…",
         "size": 0,
         "strucppVersion": "0.8.1-rc1",
         "headers": ["hmi_core.h"],
-        "license": "GPL-3.0-only OR LicenseRef-Autonomy-Commercial",
-        "hmiCoreApi": 1,
-        "catalog": { "widgets": [], "colors": [] }
+        "license": "GPL-3.0-only OR LicenseRef-Autonomy-Commercial"
       }
     ]
   }
   ```
 
-  The catalogue (palette groups, defaults, colours, preview values, ranges, requirements, data sources, series,
-  inputs with their types and attributes) is generated from the archive's STruC++ manifest, which carries the
-  `hmi_*` attribute pragmas of the source; `src/catalog-types.ts` documents each field.
-
 - `SHA256SUMS`, and `LICENSE` and `LICENSING.md`.
 
 ## HMI core API version
 
-Widget code calls the HMI C core (`hmi_core.h`), which lives in the OpenPLC Editor. `hmi-core.json` states the core API
-version the libraries are written for; every `hmi` archive records it as `hmiCoreApi`, and the editor refuses a widget
-library built for another core API version.
+Widget code calls the HMI C core (`hmi_core.h`), which lives in the OpenPLC Editor and defines its API version as the
+`HMI_CORE_API_VERSION` macro. The build reads that macro from the core at the editor commit `hmi-core.json` pins (or
+from `HMI_CORE_EDITOR_DIR`) and compiles every library that lists `hmi_core.h` against that version, so the archive's
+`manifest.headerVersions` and each chunk that needs the core carry it. `hmi_core.h` is the only header with a known API
+version; the build refuses any other header in `library.json`. The editor does not use a POU that needs another core
+API version than its own. To move to a new core API, pin `hmi-core.json` to the editor commit that
+raises the macro.
 
 ## Tests
 
 ```bash
-npm test                   # archives load, two builds are identical, manifest and sums, catalogue vs. the sources
 npm run setup:hmi-core     # fetch the HMI core, fonts and font table step at the editor commit hmi-core.json pins
+npm test                   # archives load, two builds are identical, manifest and sums, per-POU header requirements
 npm run build && npm run test:native
 ```
 
@@ -110,8 +98,9 @@ to test against its core instead of the pinned commit.
 
 ## Releasing
 
-Set `version` in `package.json`, merge to `main`, then push the tag `v<version>`. `release.yml` builds twice, runs
-every test and publishes the assets with their SHA-256 sums. The editor and OpenPLC Web pin the release in
+Set `version` in `package.json`, merge to `main`, then push the tag `v<version>` on a commit of `main`. `release.yml`
+builds twice and runs every test in a read-only job, then a separate job with write access publishes the assets it
+built with their SHA-256 sums. It refuses a tag that is not on `main` or does not match `package.json`. The editor and OpenPLC Web pin the release in
 `binary-versions.json`, with the SHA-256 of `openplc-hmi-widgets.json`.
 
 ## Licence

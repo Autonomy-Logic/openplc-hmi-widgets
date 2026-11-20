@@ -2,10 +2,9 @@
 // Copyright (c) 2026 Autonomy®
 /**
  * A library's `library.json`: STruC++'s library identity (`name`, `displayName`, `version`, `namespace`,
- * `description`) plus the archive's kind, the headers its code includes, its sources in compile order and the libraries
- * of this repository it depends on.
+ * `description`) plus the headers its code includes, its sources in compile order and the libraries of this repository
+ * it depends on.
  */
-import type { LibraryKind } from './release-manifest.js'
 
 export interface LibraryConfig {
   name: string
@@ -13,7 +12,6 @@ export interface LibraryConfig {
   version: string
   namespace: string
   description: string
-  kind: LibraryKind
   headers: string[]
   /** `.st` files of the library's folder, in the order they are compiled. */
   sources: string[]
@@ -48,8 +46,6 @@ export function parseLibraryConfig(text: string, label: string): LibraryConfig {
   if (!NAME.test(name)) fail(`"name" must be kebab-case: ${name}`)
   const namespace = text_('namespace')
   if (!NAMESPACE.test(namespace)) fail(`"namespace" must be a C++ identifier in lower case: ${namespace}`)
-  const kind = raw.kind
-  if (kind !== 'hmi' && kind !== 'plc') return fail('"kind" must be "hmi" or "plc"')
   const headers = raw.headers ?? []
   if (!stringList(headers)) return fail('"headers" must be a list of file names')
   const sources = raw.sources
@@ -64,7 +60,6 @@ export function parseLibraryConfig(text: string, label: string): LibraryConfig {
     version: text_('version'),
     namespace,
     description: text_('description'),
-    kind,
     headers,
     sources,
     dependencies,

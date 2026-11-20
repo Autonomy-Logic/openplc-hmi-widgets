@@ -195,6 +195,7 @@ FUNCTION HMI_FormatValue : STRING(65)
 END_FUNCTION
 
 (* Parses a REAL from Text; Fallback when the text is not a finite number. *)
+{attribute 'headers' := ''}
 FUNCTION HMI_ParseReal : REAL
   VAR_INPUT Text : STRING; Fallback : REAL; END_VAR
   {external
@@ -297,6 +298,7 @@ FUNCTION HMI_Calibrate : BOOL
 END_FUNCTION
 
 (* Nanoseconds since 1970-01-01 00:00 of a DT, as stored. *)
+{attribute 'headers' := ''}
 FUNCTION HMI_DTNanos : LINT
   VAR_INPUT Value : DT; END_VAR
   {external HMI_DTNANOS_result.set(static_cast<int64_t>(VALUE.get())); }
