@@ -18,7 +18,7 @@ build, a POU that needs no header in a PLC build as well. Every POU of `hmi-alar
 ```
 libraries/<name>/library.json   identity, headers, sources in compile order, dependencies
 libraries/<name>/*.st           the ST source
-src/                            the build: release manifest, library configuration
+src/                            the build: release assets, library configuration
 scripts/                        setup-strucpp, fetch-hmi-core, build
 tests/                          unit tests (Vitest) and the native frame tests (tests/native/)
 binary-versions.json            the pinned STruC++ release and the SHA-256 of its tarball
@@ -35,7 +35,7 @@ would each depend on a base archive and add load and dependency handling without
 npm ci
 npm run setup:strucpp      # the STruC++ pinned in binary-versions.json, checked against its SHA-256
 npm run setup:hmi-core     # the HMI core at the editor commit hmi-core.json pins
-npm run build              # dist/: one .stlib per library, openplc-hmi-widgets.json, SHA256SUMS
+npm run build              # dist/: one .stlib per library, LICENSE, LICENSING.md, SHA256SUMS
 ```
 
 The build refuses any STruC++ but the pinned one, and two builds are byte-identical.
@@ -47,31 +47,11 @@ The build refuses any STruC++ but the pinned one, and two builds are byte-identi
   core API version). The editor derives the widget catalogue from the archive's manifest, which carries the `hmi_*`
   attribute pragmas of the source.
 
-- `openplc-hmi-widgets.json`, the release manifest (format 2):
+- `LICENSE` and `LICENSING.md`.
 
-  ```json
-  {
-    "formatVersion": 2,
-    "name": "openplc-hmi-widgets",
-    "version": "1.0.0",
-    "strucppVersion": "0.8.1-rc1",
-    "archives": [
-      {
-        "name": "standard-widgets",
-        "displayName": "HMI Standard Widgets",
-        "version": "1.0.0",
-        "file": "standard-widgets.stlib",
-        "sha256": "…",
-        "size": 0,
-        "strucppVersion": "0.8.1-rc1",
-        "headers": ["hmi_core.h"],
-        "license": "GPL-3.0-only OR LicenseRef-Autonomy-Commercial"
-      }
-    ]
-  }
-  ```
-
-- `SHA256SUMS`, and `LICENSE` and `LICENSING.md`.
+- `SHA256SUMS`: every other asset with its SHA-256, in `sha256sum` format. It is the release's only index: consumers
+  pin its SHA-256, install the files it lists and check each against it. Everything about a library (name, version,
+  display name, headers) is in its archive.
 
 ## HMI core API version
 
@@ -87,7 +67,7 @@ raises the macro.
 
 ```bash
 npm run setup:hmi-core     # fetch the HMI core, fonts and font table step at the editor commit hmi-core.json pins
-npm test                   # archives load, two builds are identical, manifest and sums, per-POU header requirements
+npm test                   # archives load, two builds are identical, assets and sums, per-POU header requirements
 npm run build && npm run test:native
 ```
 
@@ -100,8 +80,8 @@ to test against its core instead of the pinned commit.
 
 Set `version` in `package.json`, merge to `main`, then push the tag `v<version>` on a commit of `main`. `release.yml`
 builds twice and runs every test in a read-only job, then a separate job with write access publishes the assets it
-built with their SHA-256 sums. It refuses a tag that is not on `main` or does not match `package.json`. The editor and OpenPLC Web pin the release in
-`binary-versions.json`, with the SHA-256 of `openplc-hmi-widgets.json`.
+built. It refuses a tag that is not on `main` or does not match `package.json`. The editor and OpenPLC Web pin the
+release in `binary-versions.json`, with the SHA-256 of `SHA256SUMS`.
 
 ## Licence
 

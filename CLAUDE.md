@@ -1,7 +1,7 @@
 # OpenPLC HMI Widgets
 
 The ST libraries of the OpenPLC HMI (widget libraries and the PLC-side HMI Alarms library), built into STruC++ `.stlib`
-archives with a release manifest that the OpenPLC Editor and OpenPLC Web pin and ship pre-installed.
+archives with their `SHA256SUMS`, which the OpenPLC Editor and OpenPLC Web pin and ship pre-installed.
 
 ## Autonomy development rules
 
@@ -50,15 +50,15 @@ Integration branch: `development`. Jira project: `DOPE`.
 ```bash
 npm ci && npm run setup:strucpp   # dependencies, then the STruC++ pinned (with its SHA-256) in binary-versions.json
 npm run setup:hmi-core            # HMI core, fonts and font table step at the editor commit in hmi-core.json
-npm run build                     # dist/: <library>.stlib, openplc-hmi-widgets.json, SHA256SUMS
-npm test                          # Vitest: build, determinism, manifest, per-POU header requirements
+npm run build                     # dist/: <library>.stlib, LICENSE, LICENSING.md, SHA256SUMS
+npm test                          # Vitest: build, determinism, assets and sums, per-POU header requirements
 npm run test:native               # needs build + setup:hmi-core: frame and scan goldens on gcc and clang
 npm run typecheck && npm run lint && npm run format:check
 ```
 
 CI (`.github/workflows/ci.yml`) runs exactly these on every pull request and also builds twice and diffs `dist/`.
 `release.yml` runs on a `v*` tag on `main` that equals `package.json` `version`: a read-only job builds and tests, a
-separate `contents: write` job only publishes that job's `dist/` with `LICENSE` and `LICENSING.md`. Actions are pinned
+separate `contents: write` job only publishes that job's `dist/`. Actions are pinned
 by commit SHA; keep them so, and keep `persist-credentials: false` on checkouts.
 
 ## Architecture
@@ -68,12 +68,12 @@ by commit SHA; keep them so, and keep `persist-credentials: false` on checkouts.
   library kinds: where a POU can be used follows from the headers its chunk needs.
 - `src/build.ts`: compiles each library with `compileStlib` in dependency order, with `hmi_core.h` at the core API
   version (any other header is refused), sets `displayName`/`description`, reloads the archive through
-  `loadStlibFromString`, writes the plain archives, the release manifest and `SHA256SUMS`. Output must stay
+  `loadStlibFromString`, writes the plain archives, the licence files and `SHA256SUMS`. Output must stay
   deterministic: no timestamps, no map iteration over unordered input.
 - `{external}` code: a POU whose code does not call the HMI core says so with `{attribute 'headers' := ''}`, so its
   chunk needs no header and a PLC build can use it. Without it, every POU with `{external}` code needs `hmi_core.h`.
-- `src/release-manifest.ts`: the release manifest format. Bump `RELEASE_MANIFEST_FORMAT` for any incompatible change;
-  consumers refuse formats they do not know. The editor owns the widget catalogue, derived from the archives' manifests.
+- `src/release-assets.ts`: the release assets. `SHA256SUMS` is the only index; consumers pin its SHA-256. Do not add a
+  second manifest: library facts live in the archives. The editor owns the widget catalogue, derived from them.
 - `hmi-core.json`: `source.ref` is the editor commit the HMI core comes from. The build reads the core API version from
   that core's `HMI_CORE_API_VERSION` macro (`hmi_core.h`), so the build needs `setup:hmi-core` (or
   `HMI_CORE_EDITOR_DIR`); the editor does not use archives built for another API version.
