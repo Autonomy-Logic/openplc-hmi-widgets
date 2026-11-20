@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (c) 2026 Autonomy®
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 
 import { getVersion, loadStlibFromString } from 'strucpp'
 import { beforeAll, describe, expect, it } from 'vitest'
 
-import { buildRelease, type BuildOutput, readHmiCoreConfig, readLibraries } from '../src/build.js'
+import {
+  buildRelease,
+  type BuildOutput,
+  HMI_CORE_HEADER,
+  hmiCoreDir,
+  parseHmiCoreApiVersion,
+  readHmiCoreApiVersion,
+  readLibraries,
+} from '../src/build.js'
 import {
   LIBRARY_LICENSE,
   RELEASE_MANIFEST_FILE,
@@ -72,13 +81,13 @@ describe('release build', () => {
   })
 
   it('marks the widget library hmi with the core API it needs, and the alarms library plc', () => {
-    const core = readHmiCoreConfig(ROOT)
+    const hmiCoreApi = readHmiCoreApiVersion(hmiCoreDir(ROOT))
     const widgets = first.manifest.archives.find((a) => a.name === 'standard-widgets')
     const alarms = first.manifest.archives.find((a) => a.name === 'hmi-alarms')
-    expect(widgets).toMatchObject({ kind: 'hmi', hmiCoreApi: core.apiVersion, headers: ['hmi_core.h'] })
+    expect(widgets).toMatchObject({ kind: 'hmi', hmiCoreApi, headers: ['hmi_core.h'] })
     expect(alarms).toMatchObject({ kind: 'plc', headers: [], displayName: 'HMI Alarms' })
     expect(JSON.parse(archiveText('standard-widgets'))).toMatchObject({
-      openplc: { kind: 'hmi', hmiCoreApi: core.apiVersion },
+      openplc: { kind: 'hmi', hmiCoreApi },
     })
   })
 
@@ -87,5 +96,38 @@ describe('release build', () => {
     const listed = new Map(sums.map((line) => [line.slice(66), line.slice(0, 64)]))
     for (const [name, text] of first.files) if (name !== SHA256SUMS_FILE) expect(listed.get(name)).toBe(sha256Hex(text))
     expect(listed.size).toBe(first.files.size - 1)
+  })
+})
+
+describe('HMI core API version', () => {
+  it('is the HMI_CORE_API_VERSION macro of the core header', () => {
+    expect(parseHmiCoreApiVersion('#define HMI_DL_VERSION 1u\n#define HMI_CORE_API_VERSION 3\n')).toBe(3)
+    expect(parseHmiCoreApiVersion('  #  define HMI_CORE_API_VERSION 12u\n')).toBe(12)
+  })
+
+  it('refuses a header without the macro, with it twice, or with a value that is not a positive integer', () => {
+    expect(() => parseHmiCoreApiVersion('#define HMI_DL_VERSION 1u\n')).toThrow('0 times')
+    expect(() => parseHmiCoreApiVersion('#define HMI_CORE_API_VERSION 1\n#define HMI_CORE_API_VERSION 2\n')).toThrow(
+      '2 times',
+    )
+    expect(() => parseHmiCoreApiVersion('#define HMI_CORE_API_VERSION 0\n')).toThrow('positive integer')
+    expect(() => parseHmiCoreApiVersion('#define HMI_CORE_API_VERSION (1 + 1)\n')).toThrow('0 times')
+  })
+
+  it('names the header and the setup step when the core is not fetched', () => {
+    expect(() => readHmiCoreApiVersion(join(tmpdir(), 'no-such-editor-tree'))).toThrow('npm run setup:hmi-core')
+  })
+
+  it('is stamped on the widget library from the core the build is given', () => {
+    const coreDir = mkdtempSync(join(tmpdir(), 'hmi-core-'))
+    try {
+      const header = join(coreDir, HMI_CORE_HEADER)
+      mkdirSync(dirname(header), { recursive: true })
+      writeFileSync(header, '#define HMI_CORE_API_VERSION 7\n')
+      const { manifest } = buildRelease({ root: ROOT, coreDir })
+      expect(manifest.archives.find((a) => a.name === 'standard-widgets')).toMatchObject({ hmiCoreApi: 7 })
+    } finally {
+      rmSync(coreDir, { recursive: true, force: true })
+    }
   })
 })

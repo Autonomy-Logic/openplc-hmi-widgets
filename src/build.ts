@@ -5,7 +5,7 @@
  * the release manifest and the SHA-256 sums. The output depends only on the sources, the configuration and the
  * STruC++ version, so two builds are byte-identical.
  */
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { compileStlib, getVersion, type LibraryManifest, loadStlibFromString, type StlibArchive } from 'strucpp'
@@ -27,6 +27,8 @@ import { sha256Hex } from './sha256.js'
 export interface BuildInput {
   /** Repository root: `libraries/`, `hmi-core.json` and `package.json` are read from it. */
   root: string
+  /** Editor tree whose HMI core header gives the core API version; `hmiCoreDir(root)` when absent. */
+  coreDir?: string
 }
 
 export interface BuildOutput {
@@ -36,23 +38,51 @@ export interface BuildOutput {
 }
 
 export interface HmiCoreConfig {
-  apiVersion: number
   source: { repository: string; ref: string }
 }
+
+/** Path of the HMI core header in an editor tree. */
+export const HMI_CORE_HEADER = 'resources/sources/hmi/core/hmi_core.h'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Reads `hmi-core.json`: the HMI core API version the widget libraries are written for, and where the core lives. */
+/** Reads `hmi-core.json`: the editor repository and commit the HMI core is taken from. */
 export function readHmiCoreConfig(root: string): HmiCoreConfig {
   const raw: unknown = JSON.parse(readFileSync(join(root, 'hmi-core.json'), 'utf8'))
-  if (!isRecord(raw) || !Number.isInteger(raw.apiVersion) || typeof raw.apiVersion !== 'number' || raw.apiVersion < 1)
-    throw new Error('hmi-core.json: "apiVersion" must be a positive integer')
-  const source = raw.source
+  const source = isRecord(raw) ? raw.source : undefined
   if (!isRecord(source) || typeof source.repository !== 'string' || typeof source.ref !== 'string')
     throw new Error('hmi-core.json: "source" must name a repository and a ref')
-  return { apiVersion: raw.apiVersion, source: { repository: source.repository, ref: source.ref } }
+  return { source: { repository: source.repository, ref: source.ref } }
+}
+
+/** The editor tree the HMI core comes from: `HMI_CORE_EDITOR_DIR`, else the commit `hmi-core.json` pins, as fetched. */
+export function hmiCoreDir(root: string): string {
+  const fromEnv = process.env.HMI_CORE_EDITOR_DIR
+  if (fromEnv) return fromEnv
+  return join(root, '.cache', 'hmi-core', readHmiCoreConfig(root).source.ref)
+}
+
+/** The value of the single `HMI_CORE_API_VERSION` macro in the text of an HMI core header. */
+export function parseHmiCoreApiVersion(header: string): number {
+  const defines = [...header.matchAll(/^[ \t]*#[ \t]*define[ \t]+HMI_CORE_API_VERSION[ \t]+(\d+)u?[ \t]*$/gm)]
+  if (defines.length !== 1)
+    throw new Error(`defines HMI_CORE_API_VERSION ${defines.length} times, expected once as a positive integer`)
+  const version = Number(defines[0][1])
+  if (!Number.isSafeInteger(version) || version < 1) throw new Error('HMI_CORE_API_VERSION must be a positive integer')
+  return version
+}
+
+/** The HMI core API version the widget libraries are built for: the `HMI_CORE_API_VERSION` macro of the core header. */
+export function readHmiCoreApiVersion(coreDir: string): number {
+  const file = join(coreDir, HMI_CORE_HEADER)
+  if (!existsSync(file)) throw new Error(`${file} is missing: run npm run setup:hmi-core`)
+  try {
+    return parseHmiCoreApiVersion(readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw new Error(`${file} ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
 /** The release version, from `package.json`. */
@@ -118,7 +148,7 @@ function compileLibrary(dir: string, config: LibraryConfig, dependencies: StlibA
 
 /** Builds every library, the release manifest and the sums. */
 export function buildRelease(input: BuildInput): BuildOutput {
-  const core = readHmiCoreConfig(input.root)
+  const hmiCoreApi = readHmiCoreApiVersion(input.coreDir ?? hmiCoreDir(input.root))
   const version = readReleaseVersion(input.root)
   const strucppVersion = getVersion()
   const loaded = new Map<string, StlibArchive>()
@@ -139,7 +169,7 @@ export function buildRelease(input: BuildInput): BuildOutput {
             formatVersion: ARCHIVE_METADATA_FORMAT,
             kind: 'hmi',
             license: LIBRARY_LICENSE,
-            hmiCoreApi: core.apiVersion,
+            hmiCoreApi,
             catalog: buildWidgetCatalog(
               reloaded.manifest,
               dependencies.map((d): LibraryManifest => d.manifest),

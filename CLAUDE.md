@@ -48,7 +48,7 @@ Integration branch: `development`. Jira project: `DOPE`.
 ## Commands
 
 ```bash
-npm ci && npm run setup:strucpp   # dependencies, then the STruC++ pinned in binary-versions.json (npm ci removes it)
+npm ci && npm run setup:strucpp   # dependencies, then the STruC++ pinned (with its SHA-256) in binary-versions.json
 npm run setup:hmi-core            # HMI core, fonts and font table step at the editor commit in hmi-core.json
 npm run build                     # dist/: <library>.stlib, openplc-hmi-widgets.json, SHA256SUMS
 npm test                          # Vitest: build, determinism, manifest, catalogue vs. sources
@@ -57,8 +57,9 @@ npm run typecheck && npm run lint && npm run format:check
 ```
 
 CI (`.github/workflows/ci.yml`) runs exactly these on every pull request and also builds twice and diffs `dist/`.
-`release.yml` runs on a `v*` tag that equals `package.json` `version` and publishes `dist/` with `LICENSE` and
-`LICENSING.md`.
+`release.yml` runs on a `v*` tag on `main` that equals `package.json` `version`: a read-only job builds and tests, a
+separate `contents: write` job only publishes that job's `dist/` with `LICENSE` and `LICENSING.md`. Actions are pinned
+by commit SHA; keep them so, and keep `persist-credentials: false` on checkouts.
 
 ## Architecture
 
@@ -72,9 +73,9 @@ CI (`.github/workflows/ci.yml`) runs exactly these on every pull request and als
   change here needs the matching change there.
 - `src/release-manifest.ts`: release manifest and archive metadata formats. Bump `RELEASE_MANIFEST_FORMAT` or
   `ARCHIVE_METADATA_FORMAT` for any incompatible change; consumers refuse formats they do not know.
-- `hmi-core.json`: `apiVersion` is the HMI core API the widget code calls; the editor defines the same number
-  (`HMI_CORE_API_VERSION`) and refuses archives built for another one. `source.ref` is the editor commit the native
-  tests take the core from. Change both together when the core API changes.
+- `hmi-core.json`: `source.ref` is the editor commit the HMI core comes from. The build reads the core API version from
+  that core's `HMI_CORE_API_VERSION` macro (`hmi_core.h`), so the build needs `setup:hmi-core` (or
+  `HMI_CORE_EDITOR_DIR`); the editor does not use archives built for another API version.
 - `tests/native/`: C/C++ harnesses with goldens; `HMI_CORE_EDITOR_DIR` points them at a local editor checkout.
 
 ## Conventions

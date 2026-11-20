@@ -10,6 +10,8 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 export interface ToolPin {
   version: string
   repository: string
+  /** SHA-256 of the release tarball, lower-case hex. */
+  sha256: string
 }
 
 /** The STruC++ release the archives are built with. */
@@ -23,9 +25,12 @@ export function pinnedStrucpp(): ToolPin {
     pin === null ||
     !('version' in pin) ||
     !('repository' in pin) ||
+    !('sha256' in pin) ||
     typeof pin.version !== 'string' ||
-    typeof pin.repository !== 'string'
+    typeof pin.repository !== 'string' ||
+    typeof pin.sha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(pin.sha256)
   )
-    throw new Error('binary-versions.json: strucpp needs a version and a repository')
-  return { version: pin.version, repository: pin.repository }
+    throw new Error('binary-versions.json: strucpp needs a version, a repository and the sha256 of its tarball')
+  return { version: pin.version, repository: pin.repository, sha256: pin.sha256 }
 }

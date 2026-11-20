@@ -2,11 +2,13 @@
 // Copyright (c) 2026 Autonomy®
 /**
  * Installs the STruC++ release pinned in `binary-versions.json` into node_modules, from its GitHub release, the same
- * way the OpenPLC Editor does. Skips the download when the pinned version is already installed.
+ * way the OpenPLC Editor does, after checking the tarball against the pinned SHA-256. Skips the download when the
+ * pinned version is already installed.
  *
  *   tsx scripts/setup-strucpp.ts [--force]
  */
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -35,7 +37,10 @@ async function main(): Promise<void> {
   const tmp = mkdtempSync(join(ROOT, '.tmp-strucpp-'))
   try {
     const tgz = join(tmp, 'strucpp.tgz')
-    writeFileSync(tgz, new Uint8Array(await response.arrayBuffer()))
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    if (sha256 !== pin.sha256) throw new Error(`${url} has SHA-256 ${sha256}, but ${pin.sha256} is pinned`)
+    writeFileSync(tgz, bytes)
     execFileSync('npm', ['install', tgz, '--no-save'], { cwd: ROOT, stdio: 'inherit' })
   } finally {
     rmSync(tmp, { recursive: true, force: true })

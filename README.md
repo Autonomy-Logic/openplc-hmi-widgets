@@ -20,9 +20,8 @@ libraries/<name>/*.st           the ST source
 src/                            the build: catalogue, release manifest, library configuration
 scripts/                        setup-strucpp, fetch-hmi-core, build
 tests/                          unit tests (Vitest) and the native frame tests (tests/native/)
-binary-versions.json            the pinned STruC++ release
-hmi-core.json                   the HMI core API version the widget libraries need, and the editor commit the native
-                                tests take the core from
+binary-versions.json            the pinned STruC++ release and the SHA-256 of its tarball
+hmi-core.json                   the editor commit the HMI core (its API version, and the native tests' core) comes from
 ```
 
 `standard-widgets` is one archive. Its categories all extend `HmiElement`, draw through the screen runtime, use the
@@ -33,7 +32,8 @@ would each depend on a base archive and add load and dependency handling without
 
 ```bash
 npm ci
-npm run setup:strucpp      # the STruC++ pinned in binary-versions.json
+npm run setup:strucpp      # the STruC++ pinned in binary-versions.json, checked against its SHA-256
+npm run setup:hmi-core     # the HMI core at the editor commit hmi-core.json pins
 npm run build              # dist/: one .stlib per library, openplc-hmi-widgets.json, SHA256SUMS
 ```
 
@@ -91,15 +91,17 @@ The build refuses any STruC++ but the pinned one, and two builds are byte-identi
 
 ## HMI core API version
 
-Widget code calls the HMI C core (`hmi_core.h`), which lives in the OpenPLC Editor. `hmi-core.json` states the core API
-version the libraries are written for; every `hmi` archive records it as `hmiCoreApi`, and the editor refuses a widget
-library built for another core API version.
+Widget code calls the HMI C core (`hmi_core.h`), which lives in the OpenPLC Editor and defines its API version as the
+`HMI_CORE_API_VERSION` macro. The build reads that macro from the core at the editor commit `hmi-core.json` pins (or
+from `HMI_CORE_EDITOR_DIR`); every `hmi` archive records it as `hmiCoreApi`, and the editor does not use a widget
+library built for another core API version. To move to a new core API, pin `hmi-core.json` to the editor commit that
+raises the macro.
 
 ## Tests
 
 ```bash
-npm test                   # archives load, two builds are identical, manifest and sums, catalogue vs. the sources
 npm run setup:hmi-core     # fetch the HMI core, fonts and font table step at the editor commit hmi-core.json pins
+npm test                   # archives load, two builds are identical, manifest and sums, catalogue vs. the sources
 npm run build && npm run test:native
 ```
 
@@ -110,8 +112,9 @@ to test against its core instead of the pinned commit.
 
 ## Releasing
 
-Set `version` in `package.json`, merge to `main`, then push the tag `v<version>`. `release.yml` builds twice, runs
-every test and publishes the assets with their SHA-256 sums. The editor and OpenPLC Web pin the release in
+Set `version` in `package.json`, merge to `main`, then push the tag `v<version>` on a commit of `main`. `release.yml`
+builds twice and runs every test in a read-only job, then a separate job with write access publishes the assets it
+built with their SHA-256 sums. It refuses a tag that is not on `main` or does not match `package.json`. The editor and OpenPLC Web pin the release in
 `binary-versions.json`, with the SHA-256 of `openplc-hmi-widgets.json`.
 
 ## Licence
