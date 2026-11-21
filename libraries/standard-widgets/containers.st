@@ -191,7 +191,7 @@ FUNCTION_BLOCK ABSTRACT HmiStack EXTENDS HmiContainer
   END_METHOD
   METHOD PROTECTED OVERRIDE Draw : BOOL
     IF Fill <> COLOR.Transparent THEN
-      HMI_FillRect(Left, Top, Width, Height, 10, Fill);
+      HMI_FillRect(Left, Top, Width, Height, Sc(10), Fill);
     END_IF;
     Draw := TRUE;
   END_METHOD
@@ -354,14 +354,16 @@ FUNCTION_BLOCK HmiDiagram EXTENDS HmiContainer
       HMI_FillRect(Left, Top, Width, Height, 0, Fill);
     END_IF;
     IF Border <> COLOR.Transparent THEN
-      HMI_StrokeRect(Left, Top, Width, Height, 0, 1, Border);
+      HMI_StrokeRect(Left, Top, Width, Height, 0, Sc(1), Border);
     END_IF;
     (* Scroll hints while the drawing is larger than its room. *)
     IF cw > Width THEN
-      HMI_FillRect(Left - offX * Width / cw, Top + Height - 5, Width * Width / cw, 4, 2, HMI_Alpha(COLOR.TextMuted, 50));
+      HMI_FillRect(Left - offX * Width / cw, Top + Height - Sc(5), Width * Width / cw, Sc(4), Sc(2),
+        HMI_Alpha(COLOR.TextMuted, 50));
     END_IF;
     IF ch > Height THEN
-      HMI_FillRect(Left + Width - 5, Top - offY * Height / ch, 4, Height * Height / ch, 2, HMI_Alpha(COLOR.TextMuted, 50));
+      HMI_FillRect(Left + Width - Sc(5), Top - offY * Height / ch, Sc(4), Height * Height / ch, Sc(2),
+        HMI_Alpha(COLOR.TextMuted, 50));
     END_IF;
     Draw := TRUE;
   END_METHOD

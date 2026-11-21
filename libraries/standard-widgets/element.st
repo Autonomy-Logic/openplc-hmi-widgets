@@ -87,6 +87,9 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
     LayFixed : BOOL;
     (* The element's popup is open. *)
     PopupUp : BOOL;
+    (* Size this frame against the natural size, per mille: the smaller of the two axes that have a natural size. A
+       widget drawn from another reference size may set it after Rescale. *)
+    ScaleK : DINT := 1000;
   END_VAR
 
   METHOD Right : DINT
@@ -189,6 +192,38 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
     Width := MAX(PW, 0);
     Height := MAX(PH, 0);
     Place := TRUE;
+  END_METHOD
+
+  (* A natural-size length at this frame's size, rounded; a positive length stays at least one lu. *)
+  METHOD PROTECTED Sc : DINT
+    VAR_INPUT V : DINT; END_VAR
+    IF V > 0 THEN
+      Sc := MAX(1, (V * ScaleK + 500) / 1000);
+    ELSE
+      Sc := -((-V * ScaleK + 500) / 1000);
+    END_IF;
+  END_METHOD
+  METHOD INTERNAL Rescale : BOOL
+    VAR nw, nh, kw, kh : DINT; END_VAR
+    nw := NaturalWidth();
+    nh := NaturalHeight();
+    IF nw > 0 THEN
+      kw := Width * 1000 / nw;
+    END_IF;
+    IF nh > 0 THEN
+      kh := Height * 1000 / nh;
+    END_IF;
+    IF nw > 0 AND nh > 0 THEN
+      ScaleK := MIN(kw, kh);
+    ELSIF nw > 0 THEN
+      ScaleK := kw;
+    ELSIF nh > 0 THEN
+      ScaleK := kh;
+    ELSE
+      ScaleK := 1000;
+    END_IF;
+    ScaleK := MAX(ScaleK, 1);
+    Rescale := TRUE;
   END_METHOD
 
   (* ---- override surface ---- *)
@@ -366,10 +401,12 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
   END_METHOD
   METHOD INTERNAL PortXOf : DINT
     VAR_INPUT Port : HMI_PORT; END_VAR
+    Rescale();
     PortXOf := PortX(Port);
   END_METHOD
   METHOD INTERNAL PortYOf : DINT
     VAR_INPUT Port : HMI_PORT; END_VAR
+    Rescale();
     PortYOf := PortY(Port);
   END_METHOD
   METHOD INTERNAL PortDirOf : HMI_PORT
@@ -404,6 +441,7 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
     IF NOT Visible THEN
       RETURN;
     END_IF;
+    Rescale();
     Prepare();
     IF Framed THEN
       ApplyFrame();
@@ -428,6 +466,7 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
     IF Framed THEN
       ApplyFrame();
     END_IF;
+    Rescale();
     HandleInput := Input();
     IF Framed THEN
       ResetFrame();
@@ -447,6 +486,7 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
       RETURN;
     END_IF;
     ApplyOpenFrame();
+    Rescale();
     HandlePopup := PopupInput();
     ResetFrame();
   END_METHOD
@@ -455,6 +495,7 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
       RETURN;
     END_IF;
     ApplyOpenFrame();
+    Rescale();
     RenderPopup := DrawPopup();
     ResetFrame();
   END_METHOD
@@ -481,6 +522,25 @@ FUNCTION_BLOCK HmiSymbol EXTENDS HmiElement
     sox := BL + (BW - w * sk / 1000) / 2;
     soy := BT + (BH - h * sk / 1000) / 2;
     Fit := TRUE;
+  END_METHOD
+  (* Scale per mille that Fit gives a DW x DH design in a BW x BH box. *)
+  METHOD PROTECTED FitScale : DINT
+    VAR_INPUT DW, DH, BW, BH : DINT; Turn : BOOL; END_VAR
+    VAR w, h : DINT; END_VAR
+    w := SEL(Turn, MAX(DW, 1), MAX(DH, 1));
+    h := SEL(Turn, MAX(DH, 1), MAX(DW, 1));
+    FitScale := MAX(1, MIN(MAX(BW, 0) * 1000 / w, MAX(BH, 0) * 1000 / h));
+  END_METHOD
+  (* A length of V lu drawn at scale NatK, moved to the scale of the last Fit, rounded; a positive length stays >= 1. *)
+  METHOD PROTECTED FitLen : DINT
+    VAR_INPUT V, NatK : DINT; END_VAR
+    VAR k : DINT; END_VAR
+    k := MAX(NatK, 1);
+    IF V > 0 THEN
+      FitLen := MAX(1, (V * sk + k / 2) / k);
+    ELSE
+      FitLen := -((-V * sk + k / 2) / k);
+    END_IF;
   END_METHOD
   (* Screen X of design point (DX, DY). *)
   METHOD PROTECTED PX : DINT
