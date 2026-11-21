@@ -32,14 +32,14 @@ FUNCTION_BLOCK HmiPump EXTENDS HmiSymbol
   END_METHOD
   METHOD INTERNAL CapH : DINT
     IF LEN(Caption) > 0 THEN
-      CapH := 15;
+      CapH := Sc(15);
     END_IF;
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
     NaturalWidth := MAX(72, HMI_TextWidth(Caption, 11, HMI_FONT#Bold) + 4);
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
-    NaturalHeight := 48 + CapH();
+    NaturalHeight := 48 + SEL(LEN(Caption) > 0, 0, 15);
   END_METHOD
   (* Fits the drawing, 120 x 80 reference units with the motor on the left, under the caption. *)
   METHOD INTERNAL Layout : BOOL
@@ -93,7 +93,7 @@ FUNCTION_BLOCK HmiPump EXTENDS HmiSymbol
     END_IF;
     Layout();
     IF LEN(Caption) > 0 THEN
-      HMI_Text(Left + Width / 2, PY(0, 160) - CapH(), Caption, 11, HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
+      HMI_Text(Left + Width / 2, PY(0, 160) - CapH(), Caption, Sc(11), HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
     END_IF;
     spin(Run := Value AND NOT Fault AND Animate, Rate := -360);
     Part(60, 660, 1080, 70, 20, COLOR.Gray, TRUE);
@@ -143,14 +143,14 @@ FUNCTION_BLOCK HmiFan EXTENDS HmiSymbol
   END_VAR
   METHOD INTERNAL CapH : DINT
     IF LEN(Caption) > 0 THEN
-      CapH := 15;
+      CapH := Sc(15);
     END_IF;
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
     NaturalWidth := MAX(56, HMI_TextWidth(Caption, 11, HMI_FONT#Bold) + 4);
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
-    NaturalHeight := 56 + CapH();
+    NaturalHeight := 56 + SEL(LEN(Caption) > 0, 0, 15);
   END_METHOD
   (* One blade at A degrees: a triangle from the hub to the rim, filled with C or, with Outline, edged in C. *)
   METHOD INTERNAL Blade : BOOL
@@ -177,7 +177,7 @@ FUNCTION_BLOCK HmiFan EXTENDS HmiSymbol
     END_IF;
     Fit(800, 800, Left, Top + CapH(), Width, Height - CapH(), FALSE, FALSE);
     IF LEN(Caption) > 0 THEN
-      HMI_Text(Left + Width / 2, PY(0, 0) - CapH(), Caption, 11, HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
+      HMI_Text(Left + Width / 2, PY(0, 0) - CapH(), Caption, Sc(11), HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
     END_IF;
     spin(Run := Value AND NOT Fault AND Animate, Rate := Speed);
     Part(40, 40, 720, 720, 100, COLOR.Border, TRUE);
@@ -219,21 +219,21 @@ FUNCTION_BLOCK HmiConveyor EXTENDS HmiSymbol
   END_VAR
   METHOD INTERNAL CapH : DINT
     IF LEN(Caption) > 0 THEN
-      CapH := 15;
+      CapH := Sc(15);
     END_IF;
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
     NaturalWidth := MAX(140, HMI_TextWidth(Caption, 11, HMI_FONT#Bold) + 4);
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
-    NaturalHeight := 30 + CapH();
+    NaturalHeight := 30 + SEL(LEN(Caption) > 0, 0, 15);
   END_METHOD
   METHOD PROTECTED OVERRIDE Draw : BOOL
     VAR bh, dw, x, ph : DINT; c : UDINT; run : BOOL; END_VAR
     IF LEN(Caption) > 0 THEN
-      HMI_Text(Left + Width / 2, Top, Caption, 11, HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
+      HMI_Text(Left + Width / 2, Top, Caption, Sc(11), HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
     END_IF;
-    bh := MAX(Height - CapH(), 4);
+    bh := MAX(Height - CapH(), Sc(4));
     dw := MAX(600, Width * 360 / bh);
     Fit(dw, 360, Left, Top + CapH(), Width, bh, FALSE, FALSE);
     run := Value AND Animate;
@@ -294,7 +294,7 @@ FUNCTION_BLOCK HmiValve EXTENDS HmiSymbol
   METHOD INTERNAL BodyH : DINT
     BodyH := Height;
     IF LEN(Caption) > 0 THEN
-      BodyH := MAX(Height - 13, 0);
+      BodyH := MAX(Height - Sc(13), 0);
     END_IF;
   END_METHOD
   (* Fits the drawing, 120 x 80 reference units along a horizontal pipe, turned for a vertical one. *)
@@ -355,7 +355,7 @@ FUNCTION_BLOCK HmiValve EXTENDS HmiSymbol
   METHOD PROTECTED OVERRIDE Draw : BOOL
     VAR c : UDINT; y : DINT; END_VAR
     IF LEN(Caption) > 0 THEN
-      HMI_Text(Left + Width / 2, Top + BodyH() + 1, Caption, 10, HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
+      HMI_Text(Left + Width / 2, Top + BodyH() + Sc(1), Caption, Sc(10), HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
     END_IF;
     c := SEL(Value, OffColor, OnColor);
     Layout();
@@ -406,14 +406,14 @@ FUNCTION_BLOCK HmiMotor EXTENDS HmiSymbol
   END_METHOD
   METHOD INTERNAL CapH : DINT
     IF LEN(Caption) > 0 THEN
-      CapH := 15;
+      CapH := Sc(15);
     END_IF;
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
     NaturalWidth := MAX(72, HMI_TextWidth(Caption, 11, HMI_FONT#Bold) + 4);
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
-    NaturalHeight := 46 + CapH();
+    NaturalHeight := 46 + SEL(LEN(Caption) > 0, 0, 15);
   END_METHOD
   METHOD PROTECTED OVERRIDE Input : BOOL
     Changed := FALSE;
@@ -439,7 +439,7 @@ FUNCTION_BLOCK HmiMotor EXTENDS HmiSymbol
     END_IF;
     Fit(1100, 700, Left, Top + CapH(), Width, Height - CapH(), ShaftLeft, FALSE);
     IF LEN(Caption) > 0 THEN
-      HMI_Text(Left + Width / 2, PY(0, 40) - CapH(), Caption, 11, HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
+      HMI_Text(Left + Width / 2, PY(0, 40) - CapH(), Caption, Sc(11), HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
     END_IF;
     Part(180, 580, 160, 80, 10, COLOR.Gray, TRUE);
     Part(580, 580, 160, 80, 10, COLOR.Gray, TRUE);
@@ -528,14 +528,14 @@ FUNCTION_BLOCK HmiControlValve EXTENDS HmiSymbol
   END_METHOD
   METHOD INTERNAL CapH : DINT
     IF LEN(Caption) > 0 THEN
-      CapH := 13;
+      CapH := Sc(13);
     END_IF;
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
     NaturalWidth := MAX(60, HMI_TextWidth(Caption, 10, HMI_FONT#Bold) + 4);
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
-    NaturalHeight := 60 + CapH();
+    NaturalHeight := 60 + SEL(LEN(Caption) > 0, 0, 13);
   END_METHOD
   METHOD INTERNAL Layout : BOOL
     Fit(1000, 1000, Left, Top, Width, Height - CapH(), FALSE, Vertical());
@@ -582,7 +582,8 @@ FUNCTION_BLOCK HmiControlValve EXTENDS HmiSymbol
     c := SEL(Value > 0.0, OffColor, OnColor);
     Layout();
     IF CapH() > 0 THEN
-      HMI_Text(Left + Width / 2, Top + Height - CapH() + 1, Caption, 10, HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
+      HMI_Text(Left + Width / 2, Top + Height - CapH() + Sc(1), Caption, Sc(10), HMI_FONT#Bold, HMI_ALIGN#Center,
+        COLOR.Text);
     END_IF;
     Part(20, 700, 140, 160, 20, COLOR.Border, TRUE);
     Part(840, 700, 140, 160, 20, COLOR.Border, TRUE);
@@ -702,14 +703,14 @@ FUNCTION_BLOCK HmiThreeWayValve EXTENDS HmiSymbol
   END_METHOD
   METHOD INTERNAL CapH : DINT
     IF LEN(Caption) > 0 THEN
-      CapH := 13;
+      CapH := Sc(13);
     END_IF;
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
     NaturalWidth := MAX(60, HMI_TextWidth(Caption, 10, HMI_FONT#Bold) + 4);
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
-    NaturalHeight := 54 + CapH();
+    NaturalHeight := 54 + SEL(LEN(Caption) > 0, 0, 13);
   END_METHOD
   METHOD INTERNAL Layout : BOOL
     Fit(1000, 900, Left, Top + CapH(), Width, Height - CapH(), FALSE, FALSE);
@@ -754,7 +755,7 @@ FUNCTION_BLOCK HmiThreeWayValve EXTENDS HmiSymbol
   METHOD PROTECTED OVERRIDE Draw : BOOL
     Layout();
     IF CapH() > 0 THEN
-      HMI_Text(Left + Width / 2, PY(0, 160) - CapH(), Caption, 10, HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
+      HMI_Text(Left + Width / 2, PY(0, 160) - CapH(), Caption, Sc(10), HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
     END_IF;
     Part(20, 220, 140, 160, 20, COLOR.Border, TRUE);
     Part(840, 220, 140, 160, 20, COLOR.Border, TRUE);
@@ -787,14 +788,14 @@ FUNCTION_BLOCK HmiHeatExchanger EXTENDS HmiSymbol
   END_VAR
   METHOD INTERNAL CapH : DINT
     IF LEN(Caption) > 0 THEN
-      CapH := 15;
+      CapH := Sc(15);
     END_IF;
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
     NaturalWidth := MAX(84, HMI_TextWidth(Caption, 11, HMI_FONT#Bold) + 4);
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
-    NaturalHeight := 42 + CapH();
+    NaturalHeight := 42 + SEL(LEN(Caption) > 0, 0, 15);
   END_METHOD
   METHOD INTERNAL Layout : BOOL
     Fit(1400, 700, Left, Top + CapH(), Width, Height - CapH(), FALSE, FALSE);
@@ -832,7 +833,7 @@ FUNCTION_BLOCK HmiHeatExchanger EXTENDS HmiSymbol
     c := SEL(Value, OffColor, OnColor);
     Layout();
     IF LEN(Caption) > 0 THEN
-      HMI_Text(Left + Width / 2, PY(0, 40) - CapH(), Caption, 11, HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
+      HMI_Text(Left + Width / 2, PY(0, 40) - CapH(), Caption, Sc(11), HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
     END_IF;
     Part(300, 40, 120, 160, 10, COLOR.Border, TRUE);
     Part(980, 500, 120, 160, 10, COLOR.Border, TRUE);
@@ -867,14 +868,14 @@ FUNCTION_BLOCK HmiSilo EXTENDS HmiSymbol
   END_VAR
   METHOD INTERNAL CapH : DINT
     IF LEN(Caption) > 0 THEN
-      CapH := 15;
+      CapH := Sc(15);
     END_IF;
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
     NaturalWidth := MAX(52, HMI_TextWidth(Caption, 11, HMI_FONT#Bold) + 4);
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
-    NaturalHeight := 96 + CapH();
+    NaturalHeight := 96 + SEL(LEN(Caption) > 0, 0, 15);
   END_METHOD
   METHOD INTERNAL Layout : BOOL
     Fit(800, 1500, Left, Top + CapH(), Width, Height - CapH(), FALSE, FALSE);
@@ -906,7 +907,7 @@ FUNCTION_BLOCK HmiSilo EXTENDS HmiSymbol
     VAR ly : DINT; END_VAR
     Layout();
     IF LEN(Caption) > 0 THEN
-      HMI_Text(Left + Width / 2, PY(0, 80) - CapH(), Caption, 11, HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
+      HMI_Text(Left + Width / 2, PY(0, 80) - CapH(), Caption, Sc(11), HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
     END_IF;
     Seg(180, 900, 140, 1460, 30, COLOR.Text);
     Seg(620, 900, 660, 1460, 30, COLOR.Text);
@@ -950,34 +951,34 @@ FUNCTION_BLOCK HmiInstrument EXTENDS HmiElement
   END_METHOD
   METHOD INTERNAL ValH : DINT
     IF ShowValue THEN
-      ValH := 26;
+      ValH := Sc(26);
     END_IF;
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
     NaturalWidth := MAX(56, HMI_TextWidth(HMI_FormatValue(Value, Decimals, Unit), 12, HMI_FONT#Bold) + 12);
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
-    NaturalHeight := 56 + ValH();
+    NaturalHeight := 56 + SEL(ShowValue, 0, 26);
   END_METHOD
   METHOD PROTECTED OVERRIDE Draw : BOOL
     VAR cx, cy, r, w : DINT; ring : UDINT; END_VAR
-    r := MAX(MIN(Width, Height - ValH()) / 2 - 1, 8);
+    r := MAX(MIN(Width, Height - ValH()) / 2 - Sc(1), Sc(8));
     cx := Left + Width / 2;
-    cy := Top + r + 1;
+    cy := Top + r + Sc(1);
     w := MAX(r / 18, 1);
     ring := SEL(Alarm, COLOR.Text, AlarmColor);
     HMI_FillCircle(cx, cy, r, ring);
     HMI_FillCircle(cx, cy, r - w - SEL(Alarm, 0, w), COLOR.Surface);
     HMI_FillRect(cx - r + w, cy, (r - w) * 2, w, 0, COLOR.Text);
-    HMI_TextBox(cx - r, cy - r * 3 / 4, r * 2, r * 3 / 4, Tag, MAX(r * 7 / 15, 8), HMI_FONT#Bold, HMI_ALIGN#Center,
+    HMI_TextBox(cx - r, cy - r * 3 / 4, r * 2, r * 3 / 4, Tag, MAX(r * 7 / 15, Sc(8)), HMI_FONT#Bold, HMI_ALIGN#Center,
       HMI_VALIGN#Middle, COLOR.Text);
-    HMI_TextBox(cx - r, cy + w, r * 2, r * 3 / 4, Loop, MAX(r * 2 / 5, 8), HMI_FONT#Regular, HMI_ALIGN#Center,
+    HMI_TextBox(cx - r, cy + w, r * 2, r * 3 / 4, Loop, MAX(r * 2 / 5, Sc(8)), HMI_FONT#Regular, HMI_ALIGN#Center,
       HMI_VALIGN#Middle, COLOR.Text);
     IF ShowValue THEN
-      HMI_FillRect(Left, Top + Height - 22, Width, 22, 4, COLOR.Surface);
-      HMI_StrokeRect(Left, Top + Height - 22, Width, 22, 4, 1, COLOR.Border);
-      HMI_TextBox(Left, Top + Height - 22, Width, 22, HMI_FormatValue(Value, Decimals, Unit), 12, HMI_FONT#Bold,
-        HMI_ALIGN#Center, HMI_VALIGN#Middle, ValueColor);
+      HMI_FillRect(Left, Top + Height - Sc(22), Width, Sc(22), Sc(4), COLOR.Surface);
+      HMI_StrokeRect(Left, Top + Height - Sc(22), Width, Sc(22), Sc(4), Sc(1), COLOR.Border);
+      HMI_TextBox(Left, Top + Height - Sc(22), Width, Sc(22), HMI_FormatValue(Value, Decimals, Unit), Sc(12),
+        HMI_FONT#Bold, HMI_ALIGN#Center, HMI_VALIGN#Middle, ValueColor);
     END_IF;
     Draw := TRUE;
   END_METHOD

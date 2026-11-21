@@ -46,12 +46,6 @@ FUNCTION HMI_ClockText : STRING(16)
     HMI_TwoDigits(LINT_TO_DINT(s / 60 MOD 60))), ':'), HMI_TwoDigits(LINT_TO_DINT(s MOD 60)));
 END_FUNCTION
 
-(* V scaled by K per mille, the factor data widgets draw at relative to their reference size. *)
-FUNCTION HMI_Scaled : DINT
-  VAR_INPUT V, K : DINT; END_VAR
-  HMI_Scaled := V * K / 1000;
-END_FUNCTION
-
 (* Data a widget reads from a PLC table, array or summary, row by row from 0. The HMI build generates one per bound
    source; each kind overrides what its rows have. A summary answers row 0: Used is TopValid, the rest the top alarm. *)
 FUNCTION_BLOCK ABSTRACT HmiFeed
@@ -104,8 +98,6 @@ END_FUNCTION_BLOCK
 FUNCTION_BLOCK ABSTRACT HmiDataElement EXTENDS HmiElement
   VAR
     feeds : ARRAY[0..7] OF POINTER TO HmiFeed;
-    (* Scale of this frame against the widget's reference size, per mille. *)
-    k : DINT := 1000;
   END_VAR
   (* Generated: the feed of source Slot. *)
   METHOD SetFeed : BOOL
@@ -114,17 +106,6 @@ FUNCTION_BLOCK ABSTRACT HmiDataElement EXTENDS HmiElement
       feeds[Slot] := Feed;
       SetFeed := TRUE;
     END_IF;
-  END_METHOD
-  (* Sets the scale for a widget drawn RefW x RefH at its reference size. *)
-  METHOD PROTECTED Fit : BOOL
-    VAR_INPUT RefW, RefH : DINT; END_VAR
-    k := MAX(1, MIN(Width * 1000 / MAX(RefW, 1), Height * 1000 / MAX(RefH, 1)));
-    Fit := TRUE;
-  END_METHOD
-  (* A reference length at this frame's scale, at least one unit. *)
-  METHOD PROTECTED Sc : DINT
-    VAR_INPUT V : DINT; END_VAR
-    Sc := MAX(1, V * k / 1000);
   END_METHOD
   METHOD PROTECTED Fed : BOOL
     VAR_INPUT Slot : INT; END_VAR
@@ -176,7 +157,6 @@ FUNCTION_BLOCK HmiAlarmBanner EXTENDS HmiDataElement
     NaturalHeight := 34;
   END_METHOD
   METHOD INTERNAL Arrange : BOOL
-    Fit(460, 34);
     shown := FALSE;
     acked := FALSE;
     IF feeds[0] <> 0 THEN
@@ -223,7 +203,7 @@ FUNCTION_BLOCK HmiAlarmBanner EXTENDS HmiDataElement
     fs := Sc(13);
     IF NOT shown THEN
       HMI_FillRect(Left, Top, Width, Height, Sc(6), COLOR.Surface);
-      HMI_StrokeRect(Left, Top, Width, Height, Sc(6), 1, COLOR.Border);
+      HMI_StrokeRect(Left, Top, Width, Height, Sc(6), Sc(1), COLOR.Border);
       HMI_FillCircle(Left + Sc(18), cy, Sc(5), COLOR.Success);
       HMI_TextBox(Left + Sc(32), Top, Width - Sc(40), Height, 'No active alarms', fs, HMI_FONT#Regular, HMI_ALIGN#Left,
         HMI_VALIGN#Middle, COLOR.TextMuted);
@@ -233,7 +213,7 @@ FUNCTION_BLOCK HmiAlarmBanner EXTENDS HmiDataElement
     c := HMI_SeverityColor(feeds[0]^.Severity(0));
     IF acked THEN
       HMI_FillRect(Left, Top, Width, Height, Sc(6), COLOR.Surface);
-      HMI_StrokeRect(Left, Top, Width, Height, Sc(6), MAX(1, Sc(1)), c);
+      HMI_StrokeRect(Left, Top, Width, Height, Sc(6), Sc(1), c);
       fg := COLOR.Text;
       muted := COLOR.TextMuted;
       Bell(Left + Sc(12), cy - Sc(6), Sc(12), c);
@@ -344,7 +324,6 @@ FUNCTION_BLOCK HmiAlarmList EXTENDS HmiDataElement
   (* Counts the rows, keeps the scroll in range and finds the shown rows in order, in vis. *)
   METHOD INTERNAL Arrange : BOOL
     VAR i, n, slot, prev, best : DINT; later : BOOL; END_VAR
-    Fit(520, 210);
     rowH := Sc(34);
     headH := Sc(30);
     footH := Sc(34);
@@ -471,7 +450,7 @@ FUNCTION_BLOCK HmiAlarmList EXTENDS HmiDataElement
       c := HMI_SeverityColor(feeds[0]^.Severity(i));
       open := NOT feeds[0]^.Acked(i);
       IF open THEN
-        HMI_FillRect(Left + 1, y, Width - 2, rowH, 0, HMI_Alpha(c, 10));
+        HMI_FillRect(Left + Sc(1), y, Width - Sc(2), rowH, 0, HMI_Alpha(c, 10));
       END_IF;
       HMI_FillRect(Left, y, Sc(4), rowH, 0, c);
       HMI_TextBox(Left + Sc(12), y, Sc(70), rowH, HMI_ClockText(feeds[0]^.Stamp(i)), Sc(12), HMI_FONT#Regular,
@@ -499,7 +478,7 @@ FUNCTION_BLOCK HmiAlarmList EXTENDS HmiDataElement
         HMI_TextBox(AckX(), y + Sc(6), Sc(42), Sc(22), 'Ack', Sc(11), HMI_FONT#Bold, HMI_ALIGN#Center,
           HMI_VALIGN#Middle, COLOR.OnAccent);
       END_IF;
-      HMI_FillRect(Left, y + rowH - 1, Width, 1, 0, COLOR.Fill);
+      HMI_FillRect(Left, y + rowH - Sc(1), Width, Sc(1), 0, COLOR.Fill);
     END_FOR;
     HMI_Unclip();
     Thumb(Left + Width - Sc(6), listY + Sc(2), rows * rowH - Sc(4), first, nvis, total);
@@ -510,15 +489,15 @@ FUNCTION_BLOCK HmiAlarmList EXTENDS HmiDataElement
         HMI_VALIGN#Middle, COLOR.OnAccent);
     END_IF;
     HMI_FillRect(Left + Sc(106), fy + Sc(4), Sc(120), Sc(26), Sc(5), COLOR.Surface);
-    HMI_StrokeRect(Left + Sc(106), fy + Sc(4), Sc(120), Sc(26), Sc(5), 1, COLOR.Border);
+    HMI_StrokeRect(Left + Sc(106), fy + Sc(4), Sc(120), Sc(26), Sc(5), Sc(1), COLOR.Border);
     HMI_TextBox(Left + Sc(116), fy + Sc(4), Sc(90), Sc(26), SEL(Filtered(), 'All alarms', 'Active only'), Sc(12),
       HMI_FONT#Regular, HMI_ALIGN#Left, HMI_VALIGN#Middle, COLOR.Text);
-    HMI_Line(Left + Sc(206), fy + Sc(15), Left + Sc(210), fy + Sc(19), MAX(1, Sc(2)), COLOR.TextMuted);
-    HMI_Line(Left + Sc(210), fy + Sc(19), Left + Sc(214), fy + Sc(15), MAX(1, Sc(2)), COLOR.TextMuted);
+    HMI_Line(Left + Sc(206), fy + Sc(15), Left + Sc(210), fy + Sc(19), Sc(2), COLOR.TextMuted);
+    HMI_Line(Left + Sc(210), fy + Sc(19), Left + Sc(214), fy + Sc(15), Sc(2), COLOR.TextMuted);
     HMI_TextBox(Left + Sc(232), fy + Sc(4), Width - Sc(240), Sc(26), CONCAT(CONCAT(CONCAT(HMI_FormatInt(total),
       ' alarms, '), HMI_FormatInt(unacked)), ' unacked'), Sc(11), HMI_FONT#Regular, HMI_ALIGN#Right,
       HMI_VALIGN#Middle, COLOR.TextMuted);
-    HMI_StrokeRect(Left, Top, Width, Height, Sc(6), 1, COLOR.Border);
+    HMI_StrokeRect(Left, Top, Width, Height, Sc(6), Sc(1), COLOR.Border);
     Draw := TRUE;
   END_METHOD
 END_FUNCTION_BLOCK
@@ -559,7 +538,6 @@ FUNCTION_BLOCK HmiEventLog EXTENDS HmiDataElement
   (* Finds the newest entry and how many entries follow it back in sequence. *)
   METHOD INTERNAL Arrange : BOOL
     VAR i, n : DINT; q : UDINT; END_VAR
-    Fit(420, 214);
     rowH := Sc(32);
     rows := (Height - Sc(10)) / MAX(rowH, 1);
     total := 0;
@@ -638,7 +616,7 @@ FUNCTION_BLOCK HmiEventLog EXTENDS HmiDataElement
     VAR j, i, y, x, shown : DINT; END_VAR
     Arrange();
     HMI_FillRect(Left, Top, Width, Height, Sc(6), COLOR.Surface);
-    HMI_StrokeRect(Left, Top, Width, Height, Sc(6), 1, COLOR.Border);
+    HMI_StrokeRect(Left, Top, Width, Height, Sc(6), Sc(1), COLOR.Border);
     IF total = 0 THEN
       HMI_TextBox(Left, Top, Width, Height, 'No events', Sc(13), HMI_FONT#Regular, HMI_ALIGN#Center, HMI_VALIGN#Middle,
         COLOR.TextMuted);
@@ -647,12 +625,12 @@ FUNCTION_BLOCK HmiEventLog EXTENDS HmiDataElement
     END_IF;
     shown := MIN(rows, total - first);
     x := Left + Sc(16);
-    HMI_Clip(Left, Top + 1, Width, Height - 2);
+    HMI_Clip(Left, Top + Sc(1), Width, Height - Sc(2));
     FOR j := 0 TO shown - 1 DO
       i := Entry(first + j);
       y := Top + Sc(10) + j * rowH;
       IF first + j < total - 1 THEN
-        HMI_FillRect(x - Sc(1), y + Sc(18), MAX(1, Sc(2)), rowH - Sc(6), 0, COLOR.Fill);
+        HMI_FillRect(x - Sc(1), y + Sc(18), Sc(2), rowH - Sc(6), 0, COLOR.Fill);
       END_IF;
       HMI_FillCircle(x, y + Sc(12), Sc(5), KindColor(feeds[0]^.Kind(i), feeds[0]^.Severity(i)));
       HMI_TextBox(Left + Sc(30), y + Sc(1), Width - Sc(44), Sc(13), CONCAT(CONCAT(HMI_ClockText(feeds[0]^.Stamp(i)),
@@ -734,7 +712,6 @@ FUNCTION_BLOCK HmiXYPlot EXTENDS HmiPlotBase
   END_VAR
   VAR
     feeds : ARRAY[0..7] OF POINTER TO HmiFeed;
-    k : DINT := 1000;
   END_VAR
   (* Generated: the feed of source Slot, XSource to Y4Source from 0. *)
   METHOD SetFeed : BOOL
@@ -749,10 +726,6 @@ FUNCTION_BLOCK HmiXYPlot EXTENDS HmiPlotBase
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
     NaturalHeight := 220;
-  END_METHOD
-  METHOD INTERNAL Sc : DINT
-    VAR_INPUT V : DINT; END_VAR
-    Sc := MAX(1, V * k / 1000);
   END_METHOD
   METHOD INTERNAL XFeed : POINTER TO HmiFeed
     VAR_INPUT S : INT; END_VAR
@@ -797,7 +770,6 @@ FUNCTION_BLOCK HmiXYPlot EXTENDS HmiPlotBase
       any : BOOL;
       xf, yf : POINTER TO HmiFeed;
     END_VAR
-    k := MAX(1, MIN(Width * 1000 / 330, Height * 1000 / 220));
     xlo := XMin;
     xhi := XMax;
     ylo := YMin;
@@ -836,7 +808,7 @@ FUNCTION_BLOCK HmiXYPlot EXTENDS HmiPlotBase
     py := Top + topH;
     pw := Width - Sc(44) - Sc(22);
     ph := Height - topH - bottom;
-    IF pw < 8 OR ph < 8 THEN
+    IF pw < Sc(8) OR ph < Sc(8) THEN
       Draw := TRUE;
       RETURN;
     END_IF;
@@ -872,7 +844,7 @@ FUNCTION_BLOCK HmiXYPlot EXTENDS HmiPlotBase
       IF n > 1 THEN
         xf := XFeed(s);
         yf := feeds[(s - 1) * 2 + 1];
-        LineBegin(SeriesColor(s), MAX(1, Sc(2)));
+        LineBegin(SeriesColor(s), Sc(2));
         FOR i := 0 TO n - 1 DO
           LinePoint(MapX(xf^.Number(i), xlo, xhi, px, pw), MapY(yf^.Number(i), ylo, yhi, py, ph));
         END_FOR;
@@ -886,7 +858,7 @@ FUNCTION_BLOCK HmiXYPlot EXTENDS HmiPlotBase
       i := MapX(x, xlo, xhi, px, pw);
       n := MapY(y, ylo, yhi, py, ph);
       HMI_FillCircle(i, n, Sc(6), COLOR.Surface);
-      HMI_FillCircle(i, n, MAX(1, Sc(6) - MAX(1, Sc(2))), LiveColor);
+      HMI_FillCircle(i, n, MAX(1, Sc(6) - Sc(2)), LiveColor);
       HMI_Text(i + SEL(i > px + pw / 2, Sc(10), -Sc(10)), n - Sc(18), CONCAT(CONCAT(HMI_FormatValue(LiveX, Decimals,
         XUnit), '  -  '), HMI_FormatValue(LiveY, Decimals, YUnit)), Sc(11), HMI_FONT#Bold,
         SEL(i > px + pw / 2, HMI_ALIGN#Left, HMI_ALIGN#Right), COLOR.Text);
@@ -1081,48 +1053,47 @@ FUNCTION_BLOCK HmiDataTable EXTENDS HmiElement
     END_CASE;
   END_METHOD
   METHOD PROTECTED OVERRIDE Draw : BOOL
-    VAR k, n, headH, rowH, y, vx, r : DINT; i : INT; c : UDINT; END_VAR
+    VAR n, headH, rowH, y, vx, r : DINT; i : INT; c : UDINT; END_VAR
     n := INT_TO_DINT(LIMIT(1, Rows, 8));
-    k := MAX(1, MIN(Width * 1000 / 400, Height * 1000 / (SEL(ShowHeader, 0, 28) + n * 32)));
-    headH := SEL(ShowHeader, 0, HMI_Scaled(28, k));
-    rowH := HMI_Scaled(32, k);
-    r := HMI_Scaled(6, k);
-    vx := Left + Width - HMI_Scaled(82, k);
+    headH := SEL(ShowHeader, 0, Sc(28));
+    rowH := Sc(32);
+    r := Sc(6);
+    vx := Left + Width - Sc(82);
     HMI_FillRect(Left, Top, Width, Height, r, COLOR.Surface);
     IF ShowHeader THEN
       HMI_Clip(Left, Top, Width, headH);
       HMI_FillRect(Left, Top, Width, headH + r, r, COLOR.Fill);
       HMI_Unclip();
-      HMI_TextBox(Left + HMI_Scaled(12, k), Top, HMI_Scaled(70, k), headH, 'Tag', HMI_Scaled(12, k), HMI_FONT#Bold,
+      HMI_TextBox(Left + Sc(12), Top, Sc(70), headH, 'Tag', Sc(12), HMI_FONT#Bold,
         HMI_ALIGN#Left, HMI_VALIGN#Middle, COLOR.TextMuted);
-      HMI_TextBox(Left + HMI_Scaled(84, k), Top, HMI_Scaled(120, k), headH, 'Description', HMI_Scaled(12, k),
+      HMI_TextBox(Left + Sc(84), Top, Sc(120), headH, 'Description', Sc(12),
         HMI_FONT#Bold, HMI_ALIGN#Left, HMI_VALIGN#Middle, COLOR.TextMuted);
-      HMI_TextBox(vx - HMI_Scaled(80, k), Top, HMI_Scaled(80, k), headH, 'Value', HMI_Scaled(12, k), HMI_FONT#Bold,
+      HMI_TextBox(vx - Sc(80), Top, Sc(80), headH, 'Value', Sc(12), HMI_FONT#Bold,
         HMI_ALIGN#Right, HMI_VALIGN#Middle, COLOR.TextMuted);
-      HMI_TextBox(vx + HMI_Scaled(12, k), Top, HMI_Scaled(50, k), headH, 'Unit', HMI_Scaled(12, k), HMI_FONT#Bold,
+      HMI_TextBox(vx + Sc(12), Top, Sc(50), headH, 'Unit', Sc(12), HMI_FONT#Bold,
         HMI_ALIGN#Left, HMI_VALIGN#Middle, COLOR.TextMuted);
     END_IF;
     FOR i := 1 TO DINT_TO_INT(n) DO
       y := Top + headH + INT_TO_DINT(i - 1) * rowH;
       IF i MOD 2 = 0 THEN
-        HMI_FillRect(Left + 1, y, Width - 2, rowH, 0, COLOR.Background);
+        HMI_FillRect(Left + Sc(1), y, Width - Sc(2), rowH, 0, COLOR.Background);
       END_IF;
-      HMI_TextBox(Left + HMI_Scaled(12, k), y, HMI_Scaled(70, k), rowH, RowTag(i), HMI_Scaled(12, k), HMI_FONT#Bold,
+      HMI_TextBox(Left + Sc(12), y, Sc(70), rowH, RowTag(i), Sc(12), HMI_FONT#Bold,
         HMI_ALIGN#Left, HMI_VALIGN#Middle, COLOR.Text);
-      HMI_Clip(Left + HMI_Scaled(84, k), y, MAX(vx - HMI_Scaled(108, k) - Left - HMI_Scaled(84, k), 0), rowH);
-      HMI_TextBox(Left + HMI_Scaled(84, k), y, Width, rowH, RowText(i), HMI_Scaled(13, k), HMI_FONT#Regular,
+      HMI_Clip(Left + Sc(84), y, MAX(vx - Sc(108) - Left - Sc(84), 0), rowH);
+      HMI_TextBox(Left + Sc(84), y, Width, rowH, RowText(i), Sc(13), HMI_FONT#Regular,
         HMI_ALIGN#Left, HMI_VALIGN#Middle, COLOR.Text);
       HMI_Unclip();
-      HMI_TextBox(vx - HMI_Scaled(100, k), y, HMI_Scaled(100, k), rowH, HMI_FormatReal(RowValue(i), Decimals),
-        HMI_Scaled(14, k), HMI_FONT#Bold, HMI_ALIGN#Right, HMI_VALIGN#Middle, COLOR.Text);
-      HMI_TextBox(vx + HMI_Scaled(12, k), y, HMI_Scaled(50, k), rowH, RowUnit(i), HMI_Scaled(12, k), HMI_FONT#Regular,
+      HMI_TextBox(vx - Sc(100), y, Sc(100), rowH, HMI_FormatReal(RowValue(i), Decimals),
+        Sc(14), HMI_FONT#Bold, HMI_ALIGN#Right, HMI_VALIGN#Middle, COLOR.Text);
+      HMI_TextBox(vx + Sc(12), y, Sc(50), rowH, RowUnit(i), Sc(12), HMI_FONT#Regular,
         HMI_ALIGN#Left, HMI_VALIGN#Middle, COLOR.TextMuted);
       c := RowStatus(i);
       IF c <> COLOR.Transparent THEN
-        HMI_FillCircle(Left + Width - HMI_Scaled(16, k), y + rowH / 2, MAX(1, HMI_Scaled(5, k)), c);
+        HMI_FillCircle(Left + Width - Sc(16), y + rowH / 2, Sc(5), c);
       END_IF;
     END_FOR;
-    HMI_StrokeRect(Left, Top, Width, Height, r, 1, COLOR.Border);
+    HMI_StrokeRect(Left, Top, Width, Height, r, Sc(1), COLOR.Border);
     Draw := TRUE;
   END_METHOD
 END_FUNCTION_BLOCK
@@ -1150,7 +1121,7 @@ FUNCTION_BLOCK HmiDialog EXTENDS HmiElement
   VAR
     done : BOOL;
     picked : INT;
-    k, boxX, boxY, boxW, boxH, btnW, btnH, btnY, gap : DINT;
+    boxX, boxY, boxW, boxH, btnW, btnH, btnY, gap : DINT;
     count : INT;
   END_VAR
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
@@ -1162,20 +1133,20 @@ FUNCTION_BLOCK HmiDialog EXTENDS HmiElement
   METHOD INTERNAL Arrange : BOOL
     boxW := MAX(MIN(BoxWidth, HMI_ScreenW() - 16), 40);
     boxH := MAX(MIN(BoxHeight, HMI_ScreenH() - 16), 40);
-    k := MAX(1, MIN(boxW * 1000 / 260, boxH * 1000 / 140));
+    ScaleK := MAX(1, MIN(boxW * 1000 / 260, boxH * 1000 / 140));
     boxX := (HMI_ScreenW() - boxW) / 2;
     boxY := (HMI_ScreenH() - boxH) / 2;
     count := LIMIT(0, HMI_ListCount(Buttons), 3);
-    btnW := HMI_Scaled(70, k);
-    btnH := HMI_Scaled(32, k);
-    gap := HMI_Scaled(8, k);
-    btnY := boxY + boxH - btnH - HMI_Scaled(14, k);
+    btnW := Sc(70);
+    btnH := Sc(32);
+    gap := Sc(8);
+    btnY := boxY + boxH - btnH - Sc(14);
     Arrange := TRUE;
   END_METHOD
   (* Left edge of button B, from 1; the buttons sit at the box's bottom right. *)
   METHOD INTERNAL ButtonX : DINT
     VAR_INPUT B : INT; END_VAR
-    ButtonX := boxX + boxW - HMI_Scaled(12, k) - INT_TO_DINT(count - B + 1) * btnW - INT_TO_DINT(count - B) * gap;
+    ButtonX := boxX + boxW - Sc(12) - INT_TO_DINT(count - B + 1) * btnW - INT_TO_DINT(count - B) * gap;
   END_METHOD
   METHOD PROTECTED OVERRIDE Input : BOOL
     Answered := FALSE;
@@ -1226,10 +1197,11 @@ FUNCTION_BLOCK HmiDialog EXTENDS HmiElement
     IF NOT DesignMode() THEN
       RETURN;
     END_IF;
-    HMI_FillRect(Left, Top, Width, Height, 6, COLOR.Surface);
-    HMI_StrokeRect(Left, Top, Width, Height, 6, 1, COLOR.Border);
+    HMI_FillRect(Left, Top, Width, Height, Sc(6), COLOR.Surface);
+    HMI_StrokeRect(Left, Top, Width, Height, Sc(6), Sc(1), COLOR.Border);
     HMI_FillCircle(Left + Height / 2, Top + Height / 2, Height / 4, IconColor());
-    HMI_TextBox(Left + Height, Top, MAX(Width - Height - 6, 0), Height, Title, 12, HMI_FONT#Bold, HMI_ALIGN#Left,
+    HMI_TextBox(Left + Height, Top, MAX(Width - Height - Sc(6), 0), Height, Title, Sc(12), HMI_FONT#Bold,
+      HMI_ALIGN#Left,
       HMI_VALIGN#Middle, COLOR.Text);
     Draw := TRUE;
   END_METHOD
@@ -1237,36 +1209,36 @@ FUNCTION_BLOCK HmiDialog EXTENDS HmiElement
     VAR b, line, tx, ty, lines, ir : DINT; primary : BOOL; END_VAR
     Arrange();
     HMI_FillRect(0, 0, HMI_ScreenW(), HMI_ScreenH(), 0, HMI_Alpha(COLOR.Black, 35));
-    HMI_FillRect(boxX, boxY, boxW, boxH, HMI_Scaled(10, k), COLOR.Surface);
-    tx := boxX + HMI_Scaled(18, k);
+    HMI_FillRect(boxX, boxY, boxW, boxH, Sc(10), COLOR.Surface);
+    tx := boxX + Sc(18);
     IF Icon <> HMI_DIALOG_ICON#None THEN
-      ir := HMI_Scaled(14, k);
-      HMI_FillCircle(boxX + HMI_Scaled(28, k), boxY + HMI_Scaled(32, k), ir, IconColor());
-      HMI_TextBox(boxX + HMI_Scaled(28, k) - ir, boxY + HMI_Scaled(32, k) - ir, 2 * ir, 2 * ir, IconText(),
-        HMI_Scaled(16, k), HMI_FONT#Bold, HMI_ALIGN#Center, HMI_VALIGN#Middle, COLOR.White);
-      tx := boxX + HMI_Scaled(52, k);
+      ir := Sc(14);
+      HMI_FillCircle(boxX + Sc(28), boxY + Sc(32), ir, IconColor());
+      HMI_TextBox(boxX + Sc(28) - ir, boxY + Sc(32) - ir, 2 * ir, 2 * ir, IconText(),
+        Sc(16), HMI_FONT#Bold, HMI_ALIGN#Center, HMI_VALIGN#Middle, COLOR.White);
+      tx := boxX + Sc(52);
     END_IF;
-    ty := boxY + HMI_Scaled(20, k);
+    ty := boxY + Sc(20);
     HMI_Clip(boxX, boxY, boxW, boxH);
-    HMI_TextBox(tx, ty, boxX + boxW - tx - HMI_Scaled(12, k), HMI_Scaled(20, k), Title, HMI_Scaled(15, k), HMI_FONT#Bold,
+    HMI_TextBox(tx, ty, boxX + boxW - tx - Sc(12), Sc(20), Title, Sc(15), HMI_FONT#Bold,
       HMI_ALIGN#Left, HMI_VALIGN#Middle, COLOR.Text);
     lines := INT_TO_DINT(MIN(HMI_ListCount(Message), 3));
     FOR line := 0 TO lines - 1 DO
-      HMI_TextBox(tx, ty + HMI_Scaled(22, k) + line * HMI_Scaled(16, k), boxX + boxW - tx - HMI_Scaled(12, k),
-        HMI_Scaled(16, k), HMI_ListItem(Message, DINT_TO_INT(line)), HMI_Scaled(12, k), HMI_FONT#Regular,
+      HMI_TextBox(tx, ty + Sc(22) + line * Sc(16), boxX + boxW - tx - Sc(12),
+        Sc(16), HMI_ListItem(Message, DINT_TO_INT(line)), Sc(12), HMI_FONT#Regular,
         HMI_ALIGN#Left, HMI_VALIGN#Middle, COLOR.TextMuted);
     END_FOR;
     HMI_Unclip();
     FOR b := 1 TO INT_TO_DINT(count) DO
       primary := b = INT_TO_DINT(count);
       IF primary THEN
-        HMI_FillRect(ButtonX(DINT_TO_INT(b)), btnY, btnW, btnH, HMI_Scaled(6, k), COLOR.Accent);
+        HMI_FillRect(ButtonX(DINT_TO_INT(b)), btnY, btnW, btnH, Sc(6), COLOR.Accent);
       ELSE
-        HMI_FillRect(ButtonX(DINT_TO_INT(b)), btnY, btnW, btnH, HMI_Scaled(6, k), COLOR.Surface);
-        HMI_StrokeRect(ButtonX(DINT_TO_INT(b)), btnY, btnW, btnH, HMI_Scaled(6, k), 1, COLOR.Border);
+        HMI_FillRect(ButtonX(DINT_TO_INT(b)), btnY, btnW, btnH, Sc(6), COLOR.Surface);
+        HMI_StrokeRect(ButtonX(DINT_TO_INT(b)), btnY, btnW, btnH, Sc(6), Sc(1), COLOR.Border);
       END_IF;
       HMI_TextBox(ButtonX(DINT_TO_INT(b)), btnY, btnW, btnH, HMI_ListItem(Buttons, DINT_TO_INT(b) - 1),
-        HMI_Scaled(13, k), HMI_FONT#Bold, HMI_ALIGN#Center, HMI_VALIGN#Middle, SEL(primary, COLOR.Text,
+        Sc(13), HMI_FONT#Bold, HMI_ALIGN#Center, HMI_VALIGN#Middle, SEL(primary, COLOR.Text,
         COLOR.OnAccent));
     END_FOR;
     DrawPopup := TRUE;
