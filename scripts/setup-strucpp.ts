@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Autonomy®
 /**
  * Installs the STruC++ release pinned in `binary-versions.json` into node_modules, from its GitHub release, the same
- * way the OpenPLC Editor does, after checking the tarball against the pinned SHA-256. Skips the download when the
- * pinned version is already installed.
+ * way the OpenPLC Editor does, after checking the tarball against the pinned SHA-256, without running package scripts.
+ * Its dependencies (chevrotain) are pinned in package.json and package-lock.json, so `npm ci` locks them. Skips the
+ * download when the pinned version is already installed.
  *
  *   tsx scripts/setup-strucpp.ts [--force]
  */
@@ -41,7 +42,7 @@ async function main(): Promise<void> {
     const sha256 = createHash('sha256').update(bytes).digest('hex')
     if (sha256 !== pin.sha256) throw new Error(`${url} has SHA-256 ${sha256}, but ${pin.sha256} is pinned`)
     writeFileSync(tgz, bytes)
-    execFileSync('npm', ['install', tgz, '--no-save'], { cwd: ROOT, stdio: 'inherit' })
+    execFileSync('npm', ['install', tgz, '--no-save', '--ignore-scripts'], { cwd: ROOT, stdio: 'inherit' })
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }

@@ -25,6 +25,15 @@ FUNCTION_BLOCK HmiButton EXTENDS HmiElement
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
     NaturalHeight := 44;
   END_METHOD
+  (* With a preferred width, the natural width without the text, so a changing text keeps the scale; else the
+     natural width the box follows. *)
+  METHOD PROTECTED OVERRIDE ScaleWidth : DINT
+    IF PrefWidth > 0 THEN
+      ScaleWidth := 40;
+    ELSE
+      ScaleWidth := NaturalWidth();
+    END_IF;
+  END_METHOD
   METHOD PROTECTED OVERRIDE Input : BOOL
     Clicked := FALSE;
     Changed := FALSE;
@@ -53,7 +62,8 @@ FUNCTION_BLOCK HmiButton EXTENDS HmiElement
       c := HMI_Alpha(AccentColor, 75);
     END_IF;
     HMI_FillRect(Left, Top, Width, Height, Sc(Radius), c);
-    HMI_TextBox(Left, Top, Width, Height, Text, Sc(16), HMI_FONT#Bold, HMI_ALIGN#Center, HMI_VALIGN#Middle, TextColor);
+    HMI_TextBox(Left, Top, Width, Height, Text, FitSize(Text, Sc(16), HMI_FONT#Bold, Width - Sc(8)), HMI_FONT#Bold,
+      HMI_ALIGN#Center, HMI_VALIGN#Middle, TextColor);
     Draw := TRUE;
   END_METHOD
 END_FUNCTION_BLOCK
@@ -152,11 +162,12 @@ FUNCTION_BLOCK HmiSlider EXTENDS HmiElement
   METHOD INTERNAL Vertical : BOOL
     Vertical := Orientation = HMI_DIRECTION#Column OR (Orientation = HMI_DIRECTION#Auto AND Height > Width);
   END_METHOD
+  (* Natural size of the orientation drawn; Auto follows the box it was last given. *)
   METHOD PROTECTED OVERRIDE NaturalWidth : DINT
-    NaturalWidth := SEL(Orientation = HMI_DIRECTION#Column, 200, 56);
+    NaturalWidth := SEL(Vertical(), 200, 56);
   END_METHOD
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
-    NaturalHeight := SEL(Orientation = HMI_DIRECTION#Column, 40, 160) + SEL(LEN(Caption) > 0, 0, 20);
+    NaturalHeight := SEL(Vertical(), 40, 160) + SEL(LEN(Caption) > 0, 0, 20);
   END_METHOD
   (* Position of the thumb along the track for a per-mille value. *)
   METHOD INTERNAL TrackPos : DINT
@@ -711,21 +722,23 @@ FUNCTION_BLOCK HmiDropDown EXTENDS HmiElement
   METHOD INTERNAL RowH : DINT
     RowH := Sc(32);
   END_METHOD
-  (* Where the list goes: under the field, or over it when there is more room there. *)
+  (* Where the list goes on screen: under the field, or over it when there is more room there. *)
   METHOD INTERNAL Arrange : BOOL
-    VAR n, below, above, room : DINT; END_VAR
+    VAR n, below, above, room, ft, fb : DINT; END_VAR
     n := INT_TO_DINT(HMI_ListCount(Options));
-    below := HMI_ScreenH() - (Top + Height + Sc(4)) - Sc(4);
-    above := Top - Sc(8);
+    ft := ScreenY(Top);
+    fb := ScreenY(Top + Height);
+    below := HMI_ScreenH() - (fb + Sc(4)) - Sc(4);
+    above := ft - Sc(8);
     room := SEL(n * RowH() + Sc(8) <= below OR below >= above, above, below);
     rows := LIMIT(1, (room - Sc(8)) / RowH(), MAX(n, 1));
-    lw := Width;
-    lx := Left;
+    lx := ScreenX(Left);
+    lw := ScreenX(Left + Width) - lx;
     lh := rows * RowH() + Sc(8);
     IF room = below THEN
-      ly := Top + Height + Sc(4);
+      ly := fb + Sc(4);
     ELSE
-      ly := Top - Sc(4) - lh;
+      ly := ft - Sc(4) - lh;
     END_IF;
     first := DINT_TO_INT(LIMIT(0, INT_TO_DINT(first), MAX(n - rows, 0)));
     Arrange := TRUE;
@@ -902,7 +915,9 @@ FUNCTION_BLOCK HmiStepper EXTENDS HmiElement
     IF HMI_PtrPressed() AND PointerOver() THEN
       HMI_PtrConsume();
       Clicked := TRUE;
-      IF HMI_PtrX() < Left + Side() THEN
+      IF HMI_PtrY() < Top + CapH() THEN
+        held := 0;
+      ELSIF HMI_PtrX() < Left + Side() THEN
         held := -1;
       ELSIF HMI_PtrX() >= Left + Width - Side() THEN
         held := 1;

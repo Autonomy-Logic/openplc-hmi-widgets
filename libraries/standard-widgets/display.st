@@ -163,8 +163,18 @@ FUNCTION_BLOCK HmiLabel EXTENDS HmiElement
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
     NaturalHeight := Size * 3 / 2 + 8;
   END_METHOD
+  (* With a preferred width, the natural width without the text, so a changing text keeps the scale; else the
+     natural width the box follows. *)
+  METHOD PROTECTED OVERRIDE ScaleWidth : DINT
+    IF PrefWidth > 0 THEN
+      ScaleWidth := 8;
+    ELSE
+      ScaleWidth := NaturalWidth();
+    END_IF;
+  END_METHOD
   METHOD PROTECTED OVERRIDE Draw : BOOL
-    HMI_TextBox(Left, Top, Width, Height, Text, Sc(Size), Font, Align, HMI_VALIGN#Middle, TextColor);
+    HMI_TextBox(Left, Top, Width, Height, Text, FitSize(Text, Sc(Size), Font, Width), Font, Align, HMI_VALIGN#Middle,
+      TextColor);
     Draw := TRUE;
   END_METHOD
 END_FUNCTION_BLOCK
@@ -218,6 +228,15 @@ FUNCTION_BLOCK HmiLamp EXTENDS HmiElement
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
     NaturalHeight := 36;
   END_METHOD
+  (* With a preferred width, the natural width without the caption, so a changing caption keeps the scale; else the
+     natural width the box follows. *)
+  METHOD PROTECTED OVERRIDE ScaleWidth : DINT
+    IF PrefWidth > 0 THEN
+      ScaleWidth := 52;
+    ELSE
+      ScaleWidth := NaturalWidth();
+    END_IF;
+  END_METHOD
   (* The light is the natural 36 lu at the lamp's scale, centred vertically. *)
   METHOD PROTECTED OVERRIDE Draw : BOOL
     VAR d, r, cx, cy : DINT; lit : BOOL; END_VAR
@@ -230,8 +249,9 @@ FUNCTION_BLOCK HmiLamp EXTENDS HmiElement
       HMI_FillCircle(cx, cy, r + Sc(4), HMI_Alpha(OnColor, 13));
     END_IF;
     HMI_FillCircle(cx, cy, r, SEL(lit, OffColor, OnColor));
-    HMI_TextBox(Left + d + Sc(8), Top, Width - d - Sc(8), Height, Caption, Sc(16), HMI_FONT#Regular, HMI_ALIGN#Left,
-      HMI_VALIGN#Middle, COLOR.Text);
+    HMI_TextBox(Left + d + Sc(8), Top, Width - d - Sc(8), Height, Caption,
+      FitSize(Caption, Sc(16), HMI_FONT#Regular, Width - d - Sc(8)), HMI_FONT#Regular, HMI_ALIGN#Left, HMI_VALIGN#Middle,
+      COLOR.Text);
     Draw := TRUE;
   END_METHOD
 END_FUNCTION_BLOCK
@@ -623,6 +643,15 @@ FUNCTION_BLOCK HmiReadout EXTENDS HmiElement
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
     NaturalHeight := Size + 8 + NaturalCapH();
   END_METHOD
+  (* With a preferred width, the natural width without the value, so a changing value keeps the scale; else the
+     natural width the box follows. *)
+  METHOD PROTECTED OVERRIDE ScaleWidth : DINT
+    IF PrefWidth > 0 THEN
+      ScaleWidth := MAX(HMI_TextWidth(Caption, Size, HMI_FONT#Bold) + 14, 56);
+    ELSE
+      ScaleWidth := NaturalWidth();
+    END_IF;
+  END_METHOD
   METHOD PROTECTED OVERRIDE PortY : DINT
     VAR_INPUT Port : HMI_PORT; END_VAR
     IF Port = HMI_PORT#Top THEN
@@ -634,16 +663,16 @@ FUNCTION_BLOCK HmiReadout EXTENDS HmiElement
     END_IF;
   END_METHOD
   METHOD PROTECTED OVERRIDE Draw : BOOL
-    VAR boxTop : DINT; END_VAR
+    VAR boxTop : DINT; text : STRING(65); END_VAR
     boxTop := Top + CapH();
+    text := HMI_FormatValue(Value, Decimals, Unit);
     IF LEN(Caption) > 0 THEN
       HMI_Text(Left + Width / 2, Top, Caption, Sc(Size), HMI_FONT#Bold, HMI_ALIGN#Center, COLOR.Text);
     END_IF;
     HMI_FillRect(Left, boxTop, Width, Height - CapH(), Sc(2), COLOR.Surface);
     HMI_StrokeRect(Left, boxTop, Width, Height - CapH(), Sc(2), Sc(1), COLOR.Border);
-    HMI_TextBox(Left, boxTop, Width, Height - CapH(), HMI_FormatValue(Value, Decimals, Unit), Sc(Size),
-      HMI_FONT#Regular,
-      HMI_ALIGN#Center, HMI_VALIGN#Middle, AccentColor);
+    HMI_TextBox(Left, boxTop, Width, Height - CapH(), text, FitSize(text, Sc(Size), HMI_FONT#Regular, Width - Sc(4)),
+      HMI_FONT#Regular, HMI_ALIGN#Center, HMI_VALIGN#Middle, AccentColor);
     Draw := TRUE;
   END_METHOD
 END_FUNCTION_BLOCK
@@ -820,6 +849,15 @@ FUNCTION_BLOCK HmiMultiLamp EXTENDS HmiElement
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
     NaturalHeight := 40;
   END_METHOD
+  (* With a preferred width, the natural width of the caption alone, so a changing state keeps the scale; else the
+     natural width the box follows. *)
+  METHOD PROTECTED OVERRIDE ScaleWidth : DINT
+    IF PrefWidth > 0 THEN
+      ScaleWidth := HMI_TextWidth(Caption, 15, HMI_FONT#Regular) + 52;
+    ELSE
+      ScaleWidth := NaturalWidth();
+    END_IF;
+  END_METHOD
   METHOD PROTECTED OVERRIDE Draw : BOOL
     VAR d, r, cx, cy : DINT; c : UDINT; lit : BOOL; END_VAR
     d := MIN(Height, Sc(40));
@@ -835,7 +873,8 @@ FUNCTION_BLOCK HmiMultiLamp EXTENDS HmiElement
       HMI_FillCircle(cx, cy, r, COLOR.Border);
     END_IF;
     HMI_Text(Left + d + Sc(8), cy - Sc(18), Caption, Sc(15), HMI_FONT#Regular, HMI_ALIGN#Left, COLOR.Text);
-    HMI_Text(Left + d + Sc(8), cy + Sc(1), StateName(Value), Sc(12), HMI_FONT#Bold, HMI_ALIGN#Left, c);
+    HMI_Text(Left + d + Sc(8), cy + Sc(1), StateName(Value),
+      FitSize(StateName(Value), Sc(12), HMI_FONT#Bold, Width - d - Sc(8)), HMI_FONT#Bold, HMI_ALIGN#Left, c);
     Draw := TRUE;
   END_METHOD
 END_FUNCTION_BLOCK
@@ -1142,10 +1181,10 @@ FUNCTION_BLOCK HmiSevenSegment EXTENDS HmiElement
       dot := -1;
       cells := n;
     END_IF;
-    s := MAX(MIN((Width - Sc(14)) / n, Height * 22 / 44), 4);
+    s := MAX(MIN((Width - Sc(14)) / n, Height * 22 / 44), Sc(4));
     w := s * 6 / 22;
-    t := MAX(s * 3 / 22, 2);
-    g := MAX(s / 11, 1);
+    t := MAX(s * 3 / 22, Sc(2));
+    g := MAX(s / 11, Sc(1));
     y0 := Top + (Height - s * 28 / 22) / 2;
     ym := y0 + s * 14 / 22;
     y1 := y0 + s * 28 / 22;
@@ -1343,14 +1382,14 @@ FUNCTION_BLOCK HmiClock EXTENDS HmiElement
       big := k MOD 5 = 0;
       r1 := r - SEL(big, r / 11, r / 5);
       HMI_Line(cx + HMI_Sin(a, r1), cy - HMI_Cos(a, r1), cx + HMI_Sin(a, r - Sc(4)), cy - HMI_Cos(a, r - Sc(4)),
-        SEL(big, Sc(1), MAX(r / 25, 2)), SEL(big, COLOR.TextMuted, COLOR.Text));
+        SEL(big, Sc(1), MAX(r / 25, Sc(2))), SEL(big, COLOR.TextMuted, COLOR.Text));
     END_FOR;
-    Hand(cx, cy, (cal.Hour MOD 12) * 30 + cal.Minute / 2, r * 52 / 100, MAX(r / 11, 3), HandColor);
-    Hand(cx, cy, cal.Minute * 6 + cal.Second / 10, r * 78 / 100, MAX(r / 15, 2), HandColor);
+    Hand(cx, cy, (cal.Hour MOD 12) * 30 + cal.Minute / 2, r * 52 / 100, MAX(r / 11, Sc(3)), HandColor);
+    Hand(cx, cy, cal.Minute * 6 + cal.Second / 10, r * 78 / 100, MAX(r / 15, Sc(2)), HandColor);
     IF ShowSeconds THEN
-      Hand(cx, cy, cal.Second * 6, r * 85 / 100, MAX(r / 36, 1), SecondColor);
+      Hand(cx, cy, cal.Second * 6, r * 85 / 100, MAX(r / 36, Sc(1)), SecondColor);
     END_IF;
-    HMI_FillCircle(cx, cy, MAX(r / 13, 3), SEL(ShowSeconds, HandColor, SecondColor));
+    HMI_FillCircle(cx, cy, MAX(r / 13, Sc(3)), SEL(ShowSeconds, HandColor, SecondColor));
     Draw := TRUE;
   END_METHOD
 END_FUNCTION_BLOCK

@@ -463,6 +463,7 @@ END_FUNCTION_BLOCK
 TYPE DemoAlarm :
   STRUCT
     Used, Active, Acked : BOOL;
+    Seq : UDINT;
     Severity : INT;
     Message : STRING(80);
     Raised : DT;
@@ -484,7 +485,9 @@ VAR_GLOBAL
   SumMessage : STRING(80);
   SumRaised : DT;
   SumCount, SumUnacked : DINT;
+  SumSeq : UDINT;
   AckedRow : DINT := -1;
+  AckedRowSeq, AckTopSeq : UDINT;
   AckTopHits, AckAllHits : DINT;
   CurveX, PumpY, SystemY : ARRAY[0..20] OF REAL;
   Scale : DINT := 1000;
@@ -509,6 +512,10 @@ FUNCTION_BLOCK DemoAlarmFeed EXTENDS HmiFeed
   METHOD OVERRIDE Acked : BOOL
     VAR_INPUT I : DINT; END_VAR
     Acked := DemoAlarms[I].Acked;
+  END_METHOD
+  METHOD OVERRIDE Seq : UDINT
+    VAR_INPUT I : DINT; END_VAR
+    Seq := DemoAlarms[I].Seq;
   END_METHOD
   METHOD OVERRIDE Severity : INT
     VAR_INPUT I : DINT; END_VAR
@@ -538,6 +545,10 @@ FUNCTION_BLOCK DemoSummaryFeed EXTENDS HmiFeed
   METHOD OVERRIDE Acked : BOOL
     VAR_INPUT I : DINT; END_VAR
     Acked := SumAcked;
+  END_METHOD
+  METHOD OVERRIDE Seq : UDINT
+    VAR_INPUT I : DINT; END_VAR
+    Seq := SumSeq;
   END_METHOD
   METHOD OVERRIDE Severity : INT
     VAR_INPUT I : DINT; END_VAR
@@ -596,7 +607,8 @@ FUNCTION_BLOCK DemoNumbers EXTENDS HmiFeed
   END_METHOD
 END_FUNCTION_BLOCK
 
-(* Page 13: alarm banner and alarm list. *)
+(* Page 13: alarm banner and alarm list. WriteBack acknowledges a row as HMI_ALARMS does: with a Seq, only while the row
+   still holds that occurrence. *)
 FUNCTION_BLOCK AlarmScreen EXTENDS HmiScreen
   VAR
     Ban : HmiAlarmBanner;
@@ -615,10 +627,16 @@ FUNCTION_BLOCK AlarmScreen EXTENDS HmiScreen
   METHOD PROTECTED OVERRIDE WriteBack : BOOL
     IF List.AckRow >= 0 THEN
       AckedRow := List.AckRow;
-      DemoAlarms[List.AckRow].Acked := TRUE;
+      AckedRowSeq := List.AckRowSeq;
+      IF List.AckRowSeq = 0 OR List.AckRowSeq = DemoAlarms[List.AckRow].Seq THEN
+        DemoAlarms[List.AckRow].Acked := TRUE;
+      END_IF;
     END_IF;
     IF List.AckAll THEN AckAllHits := AckAllHits + 1; END_IF;
-    IF Ban.AckTop THEN AckTopHits := AckTopHits + 1; END_IF;
+    IF Ban.AckTop THEN
+      AckTopHits := AckTopHits + 1;
+      AckTopSeq := Ban.AckTopSeq;
+    END_IF;
     WriteBack := TRUE;
   END_METHOD
   METHOD PROTECTED OVERRIDE Layout : BOOL
@@ -705,6 +723,158 @@ FUNCTION_BLOCK DialogScreen EXTENDS HmiScreen
   Back1.Value := 6.0;
 END_FUNCTION_BLOCK
 
+(* Widgets of page 17 that report the scale they draw at. *)
+FUNCTION_BLOCK ProbeSlider EXTENDS HmiSlider
+  VAR_OUTPUT K : DINT; END_VAR
+  METHOD PROTECTED OVERRIDE Prepare : BOOL
+    K := ScaleK;
+    Prepare := TRUE;
+  END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK ProbeMultiLamp EXTENDS HmiMultiLamp
+  VAR_OUTPUT K : DINT; END_VAR
+  METHOD PROTECTED OVERRIDE Prepare : BOOL
+    K := ScaleK;
+    Prepare := TRUE;
+  END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK ProbeReadout EXTENDS HmiReadout
+  VAR_OUTPUT K : DINT; END_VAR
+  METHOD PROTECTED OVERRIDE Prepare : BOOL
+    K := ScaleK;
+    Prepare := TRUE;
+  END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK ProbeInstrument EXTENDS HmiInstrument
+  VAR_OUTPUT K : DINT; END_VAR
+  METHOD PROTECTED OVERRIDE Prepare : BOOL
+    K := ScaleK;
+    Prepare := TRUE;
+  END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK ProbeLabel EXTENDS HmiLabel
+  VAR_OUTPUT K : DINT; END_VAR
+  METHOD PROTECTED OVERRIDE Prepare : BOOL
+    K := ScaleK;
+    Prepare := TRUE;
+  END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK ProbeButton EXTENDS HmiButton
+  VAR_OUTPUT K : DINT; END_VAR
+  METHOD PROTECTED OVERRIDE Prepare : BOOL
+    K := ScaleK;
+    Prepare := TRUE;
+  END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK ProbeLamp EXTENDS HmiLamp
+  VAR_OUTPUT K : DINT; END_VAR
+  METHOD PROTECTED OVERRIDE Prepare : BOOL
+    K := ScaleK;
+    Prepare := TRUE;
+  END_METHOD
+END_FUNCTION_BLOCK
+
+VAR_GLOBAL
+  ProbeState : INT;
+  ProbeValue : REAL := 1.0;
+  ProbeText : STRING(64) := 'OK';
+  KSlider, KMulti, KReadout, KInstrument, KLabel, KButton, KLamp : DINT;
+  PopOpen : BOOL;
+  PopPick, PopResult : INT;
+  PopAnswers : DINT;
+END_VAR
+
+(* Page 17: an Auto slider in a tall box, widgets at a fixed size whose text or value changes, and small symbols. *)
+FUNCTION_BLOCK ScaleScreen EXTENDS HmiScreen
+  VAR
+    Sl : ProbeSlider := (Caption := 'Auto', Orientation := HMI_DIRECTION#Auto, Value := 40.0, Decimals := 0,
+      Floating := TRUE, PrefWidth := 60, PrefHeight := 200);
+    Ml : ProbeMultiLamp := (Caption := 'Mixer', States := 'Off;Running with full load;X', Floating := TRUE,
+      PrefWidth := 150, PrefHeight := 48);
+    Ro : ProbeReadout := (Caption := 'FT', Unit := 'GPM', Floating := TRUE, PrefWidth := 80, PrefHeight := 44);
+    It : ProbeInstrument := (Tag := 'FIC', Loop := '7', Unit := 'm3/h', Floating := TRUE, PrefWidth := 70,
+      PrefHeight := 90);
+    Lb : ProbeLabel := (Floating := TRUE, PrefWidth := 120, PrefHeight := 36);
+    Bt : ProbeButton := (Floating := TRUE, PrefWidth := 120, PrefHeight := 50);
+    Lp : ProbeLamp := (Floating := TRUE, PrefWidth := 150, PrefHeight := 40);
+    Ck : HmiClock := (Value := DT#2026-11-18-14:32:07, Floating := TRUE, PrefWidth := 40, PrefHeight := 40);
+    Sg : HmiSevenSegment := (Value := 42.7, Floating := TRUE, PrefWidth := 40, PrefHeight := 16);
+    Cv : HmiControlValve := (Value := 62.0, Floating := TRUE, PrefWidth := 24, PrefHeight := 24);
+    Si : HmiSilo := (Value := 70.0, Floating := TRUE, PrefWidth := 22, PrefHeight := 40);
+  END_VAR
+  METHOD PROTECTED OVERRIDE Build : BOOL
+    Attach(ADR(Sl), 0);
+    Attach(ADR(Ml), 0);
+    Attach(ADR(Ro), 0);
+    Attach(ADR(It), 0);
+    Attach(ADR(Lb), 0);
+    Attach(ADR(Bt), 0);
+    Attach(ADR(Lp), 0);
+    Attach(ADR(Ck), 0);
+    Attach(ADR(Sg), 0);
+    Attach(ADR(Cv), 0);
+    Attach(ADR(Si), 0);
+    Build := TRUE;
+  END_METHOD
+  METHOD PROTECTED OVERRIDE Layout : BOOL
+    Sl.Place(10, 10, Sl.MeasureWidth(), Sl.MeasureHeight());
+    Ml.Place(90, 10, Ml.MeasureWidth(), Ml.MeasureHeight());
+    Ro.Place(260, 10, Ro.MeasureWidth(), Ro.MeasureHeight());
+    It.Place(360, 10, It.MeasureWidth(), It.MeasureHeight());
+    Lb.Place(90, 110, Lb.MeasureWidth(), Lb.MeasureHeight());
+    Bt.Place(230, 110, Bt.MeasureWidth(), Bt.MeasureHeight());
+    Lp.Place(90, 180, Lp.MeasureWidth(), Lp.MeasureHeight());
+    Ck.Place(90, 240, Ck.MeasureWidth(), Ck.MeasureHeight());
+    Sg.Place(150, 252, Sg.MeasureWidth(), Sg.MeasureHeight());
+    Cv.Place(210, 248, Cv.MeasureWidth(), Cv.MeasureHeight());
+    Si.Place(250, 240, Si.MeasureWidth(), Si.MeasureHeight());
+    Layout := TRUE;
+  END_METHOD
+  Ml.Value := ProbeState;
+  Ro.Value := ProbeValue;
+  It.Value := ProbeValue;
+  Lb.Text := ProbeText;
+  Bt.Text := ProbeText;
+  Lp.Caption := ProbeText;
+  KSlider := Sl.K;
+  KMulti := Ml.K;
+  KReadout := Ro.K;
+  KInstrument := It.K;
+  KLabel := Lb.K;
+  KButton := Bt.K;
+  KLamp := Lp.K;
+END_FUNCTION_BLOCK
+
+(* Page 18: a drop-down and a dialog inside a diagram drawn at about half size; the dialog's first message line is
+   longer than 64 characters. *)
+FUNCTION_BLOCK PopupScreen EXTENDS HmiScreen
+  VAR
+    Plant : HmiDiagram := (DesignW := 960, DesignH := 640, MinScalePct := 10, Border := COLOR.Border, GrowAuto := TRUE);
+    Pick : HmiDropDown := (Caption := 'Recipe', Options := 'Soup;Broth;Sauce;Cream;Stock;Water', X := 80, Y := 60,
+      PrefWidth := 360, PrefHeight := 120);
+    Dlg : HmiDialog := (Title := 'Start pump P-101?',
+      Message := 'Inlet valve V-12 is closed and suction pressure is below the minimum set.;The pump may run dry.',
+      Buttons := 'Cancel;Start', BoxWidth := 440, X := 600, Y := 60);
+  END_VAR
+  METHOD PROTECTED OVERRIDE Build : BOOL
+    Attach(ADR(Plant), 0);
+    Attach(ADR(Pick), ADR(Plant));
+    Attach(ADR(Dlg), ADR(Plant));
+    Build := TRUE;
+  END_METHOD
+  METHOD PROTECTED OVERRIDE WriteBack : BOOL
+    IF Pick.Changed THEN PopPick := Pick.NewValue; END_IF;
+    WriteBack := TRUE;
+  END_METHOD
+  IF Dlg.Answered THEN
+    PopResult := Dlg.Result;
+    PopAnswers := PopAnswers + 1;
+    PopOpen := FALSE;
+  END_IF;
+  Dlg.Open := PopOpen;
+  Pick.Value := PopPick;
+END_FUNCTION_BLOCK
+
 PROGRAM HmiMain
   VAR
     S0 : DisplayScreen;
@@ -724,6 +894,8 @@ PROGRAM HmiMain
     S14 : LogScreen;
     S15 : PlotScreen;
     S16 : DialogScreen;
+    S17 : ScaleScreen;
+    S18 : PopupScreen;
     Rt : HmiRuntime;
     Started : BOOL;
   END_VAR
@@ -747,6 +919,8 @@ PROGRAM HmiMain
     Rt.AddScreen(ADR(S14));
     Rt.AddScreen(ADR(S15));
     Rt.AddScreen(ADR(S16));
+    Rt.AddScreen(ADR(S17));
+    Rt.AddScreen(ADR(S18));
     Rt.SetStart(0);
     Started := TRUE;
   END_IF;
@@ -768,6 +942,8 @@ PROGRAM HmiMain
     14: S14();
     15: S15();
     16: S16();
+    17: S17();
+    18: S18();
   END_CASE;
   Rt.EndFrame();
   IF GoHome THEN

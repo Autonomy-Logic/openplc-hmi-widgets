@@ -47,7 +47,8 @@ FUNCTION HMI_ClockText : STRING(16)
 END_FUNCTION
 
 (* Data a widget reads from a PLC table, array or summary, row by row from 0. The HMI build generates one per bound
-   source; each kind overrides what its rows have. A summary answers row 0: Used is TopValid, the rest the top alarm. *)
+   source; each kind overrides what its rows have. A summary answers row 0: Used is TopValid, the rest the top alarm,
+   Seq its TopSeq. *)
 FUNCTION_BLOCK ABSTRACT HmiFeed
   METHOD Count : DINT
     Count := 0;
@@ -129,7 +130,8 @@ FUNCTION_BLOCK ABSTRACT HmiDataElement EXTENDS HmiElement
 END_FUNCTION_BLOCK
 
 (* The newest unacknowledged alarm in its severity's colour with the count of the others and ACK, the newest active
-   one marked Acked when all are acknowledged, else "No active alarms". Source names an HMI_ALARM_SUMMARY. *)
+   one marked Acked when all are acknowledged, else "No active alarms". Source names an HMI_ALARM_SUMMARY. ACK reports
+   the shown alarm's Seq in AckTopSeq with AckTop. *)
 {attribute 'hmi_palette' := 'Alarms'}
 FUNCTION_BLOCK HmiAlarmBanner EXTENDS HmiDataElement
   VAR_INPUT
@@ -142,10 +144,15 @@ FUNCTION_BLOCK HmiAlarmBanner EXTENDS HmiDataElement
   VAR_OUTPUT
     (* TRUE for one frame when the operator acknowledges the shown alarm. *)
     AckTop : BOOL;
+    (* Seq of the alarm acknowledged with AckTop, as last drawn; 0 when the source gives none. *)
+    AckTopSeq : UDINT;
   END_VAR
   VAR
     ackX, ackY, ackW, ackH : DINT;
     shown, acked : BOOL;
+    (* The alarm as last drawn: shown, acknowledged and its Seq. *)
+    drawnShown, drawnAcked : BOOL;
+    drawnSeq : UDINT;
   END_VAR
   METHOD PROTECTED OVERRIDE TakesInput : BOOL
     TakesInput := TRUE;
@@ -171,13 +178,17 @@ FUNCTION_BLOCK HmiAlarmBanner EXTENDS HmiDataElement
   END_METHOD
   METHOD PROTECTED OVERRIDE Input : BOOL
     AckTop := FALSE;
+    AckTopSeq := 0;
     IF NOT Visible OR NOT Enabled THEN
       RETURN;
     END_IF;
     Arrange();
     IF HMI_PtrPressed() AND PointerOver() THEN
       HMI_PtrConsume();
-      AckTop := shown AND NOT acked AND HMI_Hit(ackX, ackY, ackW, ackH);
+      AckTop := drawnShown AND NOT drawnAcked AND HMI_Hit(ackX, ackY, ackW, ackH);
+      IF AckTop THEN
+        AckTopSeq := drawnSeq;
+      END_IF;
       Input := TRUE;
     END_IF;
   END_METHOD
@@ -199,6 +210,12 @@ FUNCTION_BLOCK HmiAlarmBanner EXTENDS HmiDataElement
   METHOD PROTECTED OVERRIDE Draw : BOOL
     VAR c, fg, muted : UDINT; x, cy, fs, more, pw, mx : DINT; text : STRING(120); END_VAR
     Arrange();
+    drawnShown := shown;
+    drawnAcked := acked;
+    drawnSeq := 0;
+    IF shown THEN
+      drawnSeq := feeds[0]^.Seq(0);
+    END_IF;
     cy := Top + Height / 2;
     fs := Sc(13);
     IF NOT shown THEN
@@ -256,7 +273,8 @@ FUNCTION_BLOCK HmiAlarmBanner EXTENDS HmiDataElement
 END_FUNCTION_BLOCK
 
 (* The alarms of a table, active and newest first: time, severity, message and state; unacknowledged rows tinted and
-   bold with their own Ack. Ack all goes through Service; the filter shows active alarms or all. Drag to scroll. *)
+   bold with their own Ack, reported as AckRow with the shown alarm's Seq in AckRowSeq. Ack all goes through Service;
+   the filter shows active alarms or all. Drag to scroll. *)
 {attribute 'hmi_palette' := 'Alarms'}
 {attribute 'hmi_requires' := 'hmiDataWidgets'}
 {attribute 'hmi_default' := 'GrowAuto := TRUE'}
@@ -276,6 +294,8 @@ FUNCTION_BLOCK HmiAlarmList EXTENDS HmiDataElement
   VAR_OUTPUT
     (* Feed row the operator acknowledged this frame, -1 for none. *)
     AckRow : DINT := -1;
+    (* Seq of the alarm drawn where AckRow's Ack was tapped; 0 when the source gives none. *)
+    AckRowSeq : UDINT;
     (* TRUE for one frame when the operator acknowledges every alarm. *)
     AckAll : BOOL;
   END_VAR
@@ -283,6 +303,9 @@ FUNCTION_BLOCK HmiAlarmList EXTENDS HmiDataElement
     flipped, pressing, dragged : BOOL;
     first, total, unacked, nvis, rows, rowH, headH, footH, listY, pressY, pressFirst : DINT;
     vis : ARRAY[0..63] OF DINT;
+    (* Seq of the alarm last drawn in each shown row, and how many rows were drawn. *)
+    drawnSeq : ARRAY[0..63] OF UDINT;
+    drawnRows : DINT;
   END_VAR
   METHOD PROTECTED OVERRIDE TakesInput : BOOL
     TakesInput := TRUE;
@@ -378,6 +401,7 @@ FUNCTION_BLOCK HmiAlarmList EXTENDS HmiDataElement
   METHOD PROTECTED OVERRIDE Input : BOOL
     VAR s, fy : DINT; END_VAR
     AckRow := -1;
+    AckRowSeq := 0;
     AckAll := FALSE;
     IF NOT Visible OR NOT Enabled THEN
       pressing := FALSE;
@@ -395,9 +419,10 @@ FUNCTION_BLOCK HmiAlarmList EXTENDS HmiDataElement
         first := 0;
       ELSIF HMI_PtrY() >= listY AND HMI_PtrY() < listY + rows * rowH THEN
         s := (HMI_PtrY() - listY) / MAX(rowH, 1);
-        IF s < nvis THEN
+        IF s < nvis AND s < drawnRows THEN
           IF HMI_Hit(AckX(), listY + s * rowH + Sc(6), Sc(42), Sc(22)) AND NOT feeds[0]^.Acked(vis[s]) THEN
             AckRow := vis[s];
+            AckRowSeq := drawnSeq[s];
           END_IF;
         END_IF;
         IF AckRow < 0 THEN
@@ -444,8 +469,10 @@ FUNCTION_BLOCK HmiAlarmList EXTENDS HmiDataElement
         HMI_FONT#Regular, HMI_ALIGN#Center, HMI_VALIGN#Middle, COLOR.TextMuted);
     END_IF;
     HMI_Clip(Left, listY, Width, rows * rowH);
+    drawnRows := nvis;
     FOR s := 0 TO nvis - 1 DO
       i := vis[s];
+      drawnSeq[s] := feeds[0]^.Seq(i);
       y := listY + s * rowH;
       c := HMI_SeverityColor(feeds[0]^.Severity(i));
       open := NOT feeds[0]^.Acked(i);
@@ -1177,6 +1204,28 @@ FUNCTION_BLOCK HmiDialog EXTENDS HmiElement
     END_IF;
     PopupInput := TRUE;
   END_METHOD
+  (* Line I, from 0, of Message, as HMI_ListItem but as long as Message itself. *)
+  METHOD INTERNAL MessageLine : STRING(160)
+    VAR_INPUT I : INT; END_VAR
+    VAR rest : STRING(160); k, n : INT; END_VAR
+    rest := Message;
+    MessageLine := '';
+    WHILE n <= I AND LEN(rest) > 0 DO
+      k := FIND(rest, ';');
+      IF k = 0 THEN
+        IF n = I THEN
+          MessageLine := rest;
+        END_IF;
+        rest := '';
+      ELSE
+        IF n = I THEN
+          MessageLine := MID(rest, k - 1, 1);
+        END_IF;
+        rest := MID(rest, LEN(rest) - k, k + 1);
+      END_IF;
+      n := n + 1;
+    END_WHILE;
+  END_METHOD
   METHOD INTERNAL IconColor : UDINT
     CASE Icon OF
       HMI_DIALOG_ICON#Info, HMI_DIALOG_ICON#Question: IconColor := COLOR.Accent;
@@ -1225,7 +1274,7 @@ FUNCTION_BLOCK HmiDialog EXTENDS HmiElement
     lines := INT_TO_DINT(MIN(HMI_ListCount(Message), 3));
     FOR line := 0 TO lines - 1 DO
       HMI_TextBox(tx, ty + Sc(22) + line * Sc(16), boxX + boxW - tx - Sc(12),
-        Sc(16), HMI_ListItem(Message, DINT_TO_INT(line)), Sc(12), HMI_FONT#Regular,
+        Sc(16), MessageLine(DINT_TO_INT(line)), Sc(12), HMI_FONT#Regular,
         HMI_ALIGN#Left, HMI_VALIGN#Middle, COLOR.TextMuted);
     END_FOR;
     HMI_Unclip();

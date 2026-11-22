@@ -29,7 +29,8 @@ INTERFACE IHmiElement
 END_INTERFACE
 
 (* Base of every visual element. Containers place elements; an element knows its own size. Widget authors override
-   the PROTECTED methods: Draw, Input, NaturalWidth, NaturalHeight, TakesInput, Prepare, the popup and the ports. *)
+   the PROTECTED methods: Draw, Input, NaturalWidth, NaturalHeight, ScaleWidth, ScaleHeight, TakesInput, Prepare, the
+   popup and the ports. *)
 FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
   VAR_INPUT
     (* Container this element sits in, by name; empty means the screen. Read by the HMI build. *)
@@ -87,8 +88,8 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
     LayFixed : BOOL;
     (* The element's popup is open. *)
     PopupUp : BOOL;
-    (* Size this frame against the natural size, per mille: the smaller of the two axes that have a natural size. A
-       widget drawn from another reference size may set it after Rescale. *)
+    (* Size this frame against the scale reference (ScaleWidth, ScaleHeight), per mille: the smaller of the two axes
+       that have one. A widget drawn from another reference size may set it after Rescale. *)
     ScaleK : DINT := 1000;
   END_VAR
 
@@ -205,8 +206,8 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
   END_METHOD
   METHOD INTERNAL Rescale : BOOL
     VAR nw, nh, kw, kh : DINT; END_VAR
-    nw := NaturalWidth();
-    nh := NaturalHeight();
+    nw := ScaleWidth();
+    nh := ScaleHeight();
     IF nw > 0 THEN
       kw := Width * 1000 / nw;
     END_IF;
@@ -234,6 +235,14 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
   METHOD PROTECTED NaturalHeight : DINT
     NaturalHeight := 0;
   END_METHOD
+  (* Size the scale is measured against, 0 for an axis that does not count; the natural size unless the natural size
+     follows the live value. *)
+  METHOD PROTECTED ScaleWidth : DINT
+    ScaleWidth := NaturalWidth();
+  END_METHOD
+  METHOD PROTECTED ScaleHeight : DINT
+    ScaleHeight := NaturalHeight();
+  END_METHOD
   (* TRUE for controls: their touch area takes part in pointer arbitration. *)
   METHOD PROTECTED TakesInput : BOOL
     TakesInput := FALSE;
@@ -249,14 +258,37 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
   METHOD PROTECTED Input : BOOL
     Input := FALSE;
   END_METHOD
-  (* While the popup is open: runs before every element's Input, without the container's clip; TRUE when it took the
-     pointer. *)
+  (* While the popup is open: runs before every element's Input, in screen lu (ScreenX, ScreenY place the element) and
+     at the element's scale on screen; TRUE when it took the pointer. *)
   METHOD PROTECTED PopupInput : BOOL
     PopupInput := FALSE;
   END_METHOD
-  (* While the popup is open: draws over every element, without the container's clip. *)
+  (* While the popup is open: draws over every element, in screen lu at the element's scale on screen, unclipped. *)
   METHOD PROTECTED DrawPopup : BOOL
     DrawPopup := FALSE;
+  END_METHOD
+  (* Largest text size from 1 to Size at which Text in Font is at most Avail wide; Size itself when it fits. *)
+  METHOD PROTECTED FitSize : DINT
+    VAR_INPUT Text : STRING; Size : DINT; Font : HMI_FONT; Avail : DINT; END_VAR
+    VAR w : DINT; END_VAR
+    FitSize := MAX(Size, 1);
+    w := HMI_TextWidth(Text, FitSize, Font);
+    IF w <= Avail OR FitSize = 1 THEN
+      RETURN;
+    END_IF;
+    FitSize := MAX(1, FitSize * MAX(Avail, 0) / w);
+    WHILE FitSize > 1 AND HMI_TextWidth(Text, FitSize, Font) > Avail DO
+      FitSize := FitSize - 1;
+    END_WHILE;
+  END_METHOD
+  (* Element coordinate V on screen, in lu; equal to V unless the element is in a scaled or moved frame (a diagram). *)
+  METHOD PROTECTED ScreenX : DINT
+    VAR_INPUT V : DINT; END_VAR
+    ScreenX := Q4ToLu(ScrX(V));
+  END_METHOD
+  METHOD PROTECTED ScreenY : DINT
+    VAR_INPUT V : DINT; END_VAR
+    ScreenY := Q4ToLu(ScrY(V));
   END_METHOD
   (* Opens or closes the element's popup; it also closes when the element is hidden or disabled. *)
   METHOD PROTECTED SetPopup : BOOL
@@ -389,6 +421,22 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
     VAR_INPUT V : DINT; END_VAR
     ScrLen := LINT_TO_DINT(DINT_TO_LINT(V) * 16 * DINT_TO_LINT(FK) / 65536);
   END_METHOD
+  (* 1/16 lu to lu, rounded to nearest. *)
+  METHOD INTERNAL Q4ToLu : DINT
+    VAR_INPUT V : DINT; END_VAR
+    IF V >= 0 THEN
+      Q4ToLu := (V + 8) / 16;
+    ELSE
+      Q4ToLu := -((-V + 8) / 16);
+    END_IF;
+  END_METHOD
+  (* Rescales, then moves the scale to the screen and resets the frame, for the popup. *)
+  METHOD INTERNAL PopupFrame : BOOL
+    Rescale();
+    ScaleK := MAX(1, LINT_TO_DINT(DINT_TO_LINT(ScaleK) * DINT_TO_LINT(MAX(FK, 1)) / 65536));
+    ResetFrame();
+    PopupFrame := TRUE;
+  END_METHOD
   METHOD INTERNAL PortAt : HMI_PORT
     VAR_INPUT N : INT; END_VAR
     CASE N OF
@@ -472,11 +520,6 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
       ResetFrame();
     END_IF;
   END_METHOD
-  (* The element's frame without its clip. *)
-  METHOD INTERNAL ApplyOpenFrame : BOOL
-    {external hmi_frame_set(FK.get(), FOX.get(), FOY.get(), 0, 0, 0, 0, 0); }
-    ApplyOpenFrame := TRUE;
-  END_METHOD
   METHOD INTERNAL HandlePopup : BOOL
     IF NOT PopupUp THEN
       RETURN;
@@ -485,19 +528,15 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
       PopupUp := FALSE;
       RETURN;
     END_IF;
-    ApplyOpenFrame();
-    Rescale();
+    PopupFrame();
     HandlePopup := PopupInput();
-    ResetFrame();
   END_METHOD
   METHOD INTERNAL RenderPopup : BOOL
     IF NOT PopupUp OR NOT Visible THEN
       RETURN;
     END_IF;
-    ApplyOpenFrame();
-    Rescale();
+    PopupFrame();
     RenderPopup := DrawPopup();
-    ResetFrame();
   END_METHOD
 END_FUNCTION_BLOCK
 

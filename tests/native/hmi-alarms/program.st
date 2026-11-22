@@ -1,9 +1,10 @@
 (* Scripted program for the HmiAlarms headless test: the driver sets the globals, runs scans and prints the table,
-   the log and the summary. AckRow, AckTopReq and AckAllReq stand for the HMI's writes. *)
+   the log and the summary. AckRow, AckSeq, AckTopReq, AckTopSeq and AckAllReq stand for the HMI's writes. *)
 VAR_GLOBAL
   In1, In2, In3, In4 : BOOL;
   Ev : BOOL;
   AckRow : DINT;
+  AckSeq, AckTopSeq : UDINT;
   AckTopReq, AckAllReq : BOOL;
   Lost4 : BOOL;
   Logged : DINT;
@@ -22,11 +23,15 @@ PROGRAM Main
   Lost4 := NOT HMI_ALARM(In := In4, Id := 4, Severity := 3, Message := 'Motor trip', Table := Alarms);
   IF AckRow <> 0 THEN
     Alarms[AckRow].AckReq := TRUE;
+    Alarms[AckRow].AckSeq := AckSeq;
     AckRow := 0;
+    AckSeq := 0;
   END_IF;
   IF AckTopReq THEN
     Sys.AckTop := TRUE;
+    Sys.AckTopSeq := AckTopSeq;
     AckTopReq := FALSE;
+    AckTopSeq := 0;
   END_IF;
   IF AckAllReq THEN
     Sys.AckAll := TRUE;
