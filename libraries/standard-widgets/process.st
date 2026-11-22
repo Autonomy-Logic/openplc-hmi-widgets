@@ -601,7 +601,7 @@ FUNCTION_BLOCK HmiControlValve EXTENDS HmiSymbol
     x1 := PX(760, 320);
     y1 := PY(760, 320);
     HMI_TextBox(MIN(x0, x1), MIN(y0, y1), ABS(x1 - x0), ABS(y1 - y0),
-      CONCAT(HMI_FormatInt(REAL_TO_DINT(LIMIT(0.0, Value, 100.0))), '%'), MAX(PL(110), 8), HMI_FONT#Bold,
+      CONCAT(HMI_FormatInt(REAL_TO_DINT(LIMIT(0.0, Value, 100.0))), '%'), MAX(PL(110), Sc(8)), HMI_FONT#Bold,
       HMI_ALIGN#Center, HMI_VALIGN#Middle, COLOR.OnAccent);
     Draw := TRUE;
   END_METHOD
@@ -921,7 +921,7 @@ FUNCTION_BLOCK HmiSilo EXTENDS HmiSymbol
     Quad(150, 920, 650, 920, 446, 1192, 354, 1192, FillColor, FALSE);
     HMI_Unclip();
     HMI_TextBox(PX(120, 0), PY(0, 300), PX(680, 0) - PX(120, 0), PY(0, 500) - PY(0, 300),
-      HMI_FormatValue(Value, Decimals, Unit), MAX(PL(130), 8), HMI_FONT#Bold, HMI_ALIGN#Center, HMI_VALIGN#Middle,
+      HMI_FormatValue(Value, Decimals, Unit), MAX(PL(130), Sc(8)), HMI_FONT#Bold, HMI_ALIGN#Center, HMI_VALIGN#Middle,
       COLOR.Text);
     Draw := TRUE;
   END_METHOD
@@ -960,8 +960,17 @@ FUNCTION_BLOCK HmiInstrument EXTENDS HmiElement
   METHOD PROTECTED OVERRIDE NaturalHeight : DINT
     NaturalHeight := 56 + SEL(ShowValue, 0, 26);
   END_METHOD
+  (* With a preferred width, the natural width without the value, so a changing value keeps the scale; else the
+     natural width the box follows. *)
+  METHOD PROTECTED OVERRIDE ScaleWidth : DINT
+    IF PrefWidth > 0 THEN
+      ScaleWidth := 56;
+    ELSE
+      ScaleWidth := NaturalWidth();
+    END_IF;
+  END_METHOD
   METHOD PROTECTED OVERRIDE Draw : BOOL
-    VAR cx, cy, r, w : DINT; ring : UDINT; END_VAR
+    VAR cx, cy, r, w : DINT; ring : UDINT; text : STRING(65); END_VAR
     r := MAX(MIN(Width, Height - ValH()) / 2 - Sc(1), Sc(8));
     cx := Left + Width / 2;
     cy := Top + r + Sc(1);
@@ -977,7 +986,8 @@ FUNCTION_BLOCK HmiInstrument EXTENDS HmiElement
     IF ShowValue THEN
       HMI_FillRect(Left, Top + Height - Sc(22), Width, Sc(22), Sc(4), COLOR.Surface);
       HMI_StrokeRect(Left, Top + Height - Sc(22), Width, Sc(22), Sc(4), Sc(1), COLOR.Border);
-      HMI_TextBox(Left, Top + Height - Sc(22), Width, Sc(22), HMI_FormatValue(Value, Decimals, Unit), Sc(12),
+      text := HMI_FormatValue(Value, Decimals, Unit);
+      HMI_TextBox(Left, Top + Height - Sc(22), Width, Sc(22), text, FitSize(text, Sc(12), HMI_FONT#Bold, Width - Sc(4)),
         HMI_FONT#Bold, HMI_ALIGN#Center, HMI_VALIGN#Middle, ValueColor);
     END_IF;
     Draw := TRUE;

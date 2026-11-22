@@ -1,5 +1,5 @@
-(* One row of an alarm table. A row is Used while its alarm is active or unacknowledged. The HMI writes AckReq TRUE
-   and HMI_ALARMS clears it. Severity: 1 low, 2 medium, 3 high. *)
+(* One row of an alarm table. A row is Used while its alarm is active or unacknowledged. The HMI writes AckReq TRUE,
+   with AckSeq, and HMI_ALARMS clears both. Severity: 1 low, 2 medium, 3 high. *)
 TYPE HMI_ALARM_ROW :
   STRUCT
     Used : BOOL;
@@ -10,18 +10,25 @@ TYPE HMI_ALARM_ROW :
     Acked : BOOL;
     Raised : DT;
     AckReq : BOOL;
+    (* Occurrence number, set by HMI_ALARM on every raise to 1 + the highest Seq in the table; 0 before the first. *)
+    Seq : UDINT;
+    (* Written with AckReq: when not 0, the row is acknowledged only while Seq equals it; 0 acknowledges the row. *)
+    AckSeq : UDINT;
     (* Changes of this scan, then of the last HMI_ALARMS call: 1 raised, 2 acknowledged, 4 cleared. *)
     Notify : BYTE;
     Pending : BYTE;
   END_STRUCT;
 END_TYPE
 
-(* What HMI_ALARMS reports about a table, and the acknowledgements the HMI asks of it: the HMI writes AckTop or AckAll
-   TRUE and HMI_ALARMS clears them. Top is the newest unacknowledged alarm, else the newest active one. *)
+(* What HMI_ALARMS reports about a table, and the acknowledgements the HMI asks of it: the HMI writes AckTop (with
+   AckTopSeq) or AckAll TRUE and HMI_ALARMS clears them. Top is the newest unacknowledged alarm, else the newest active
+   one. *)
 TYPE HMI_ALARM_SUMMARY :
   STRUCT
     AckTop : BOOL;
     AckAll : BOOL;
+    (* Written with AckTop: when not 0, acknowledges the Used row whose Seq equals it; 0 acknowledges the top. *)
+    AckTopSeq : UDINT;
     Count : DINT;
     ActiveCount : DINT;
     Unacked : DINT;
@@ -33,6 +40,8 @@ TYPE HMI_ALARM_SUMMARY :
     TopRaised : DT;
     (* Row of the top alarm, for AckTop. *)
     TopRow : DINT;
+    (* Seq of the top alarm, 0 when there is none. *)
+    TopSeq : UDINT;
   END_STRUCT;
 END_TYPE
 
@@ -81,7 +90,7 @@ FUNCTION HMI_LOG_EVENT : BOOL
 END_FUNCTION
 
 (* One alarm, called every scan: while In is TRUE it holds a row of Table, found by Id (by Message when Id is 0), and
-   raises it again when it was cleared. Returns FALSE when the table has no free row for it. *)
+   raises it again when it was cleared, each raise with a new Seq. Returns FALSE when the table has no free row. *)
 FUNCTION HMI_ALARM : BOOL
   VAR_INPUT
     In : BOOL;
@@ -95,9 +104,13 @@ FUNCTION HMI_ALARM : BOOL
   VAR
     row, i : DINT;
     has : BOOL;
+    seq : UDINT;
   END_VAR
   HMI_ALARM := TRUE;
   FOR i := LOWER_BOUND(Table, 1) TO UPPER_BOUND(Table, 1) DO
+    IF Table[i].Seq > seq THEN
+      seq := Table[i].Seq;
+    END_IF;
     IF NOT has AND Table[i].Used AND Table[i].Id = Id THEN
       IF Id <> 0 OR Table[i].Message = Message THEN
         row := i;
@@ -116,6 +129,8 @@ FUNCTION HMI_ALARM : BOOL
           Table[i].Active := TRUE;
           Table[i].Acked := FALSE;
           Table[i].AckReq := FALSE;
+          Table[i].AckSeq := 0;
+          Table[i].Seq := seq + 1;
           Table[i].Raised := CURRENT_DT();
           Table[i].Notify := BYTE#1;
           Table[i].Pending := BYTE#0;
@@ -125,6 +140,7 @@ FUNCTION HMI_ALARM : BOOL
     ELSIF NOT Table[row].Active THEN
       Table[row].Active := TRUE;
       Table[row].Acked := FALSE;
+      Table[row].Seq := seq + 1;
       Table[row].Raised := CURRENT_DT();
       Table[row].Notify := Table[row].Notify OR BYTE#1;
     END_IF;
@@ -141,7 +157,8 @@ FUNCTION HMI_ALARM : BOOL
 END_FUNCTION
 
 (* The alarm table's service, called once per scan after the alarms: applies the acknowledgements the HMI asked for
-   (AckReq of a row, Summary.AckTop, Summary.AckAll), frees rows that are cleared and acknowledged, and fills Summary. *)
+   (AckReq of a row, Summary.AckTop, Summary.AckAll), each checked against its Seq when one is given, frees rows that
+   are cleared and acknowledged, and fills Summary. *)
 FUNCTION HMI_ALARMS : BOOL
   VAR_IN_OUT
     Summary : HMI_ALARM_SUMMARY;
@@ -149,16 +166,28 @@ FUNCTION HMI_ALARMS : BOOL
   END_VAR
   VAR
     i, top : DINT;
-    has, better : BOOL;
+    has, better, ack : BOOL;
   END_VAR
   FOR i := LOWER_BOUND(Table, 1) TO UPPER_BOUND(Table, 1) DO
-    IF Table[i].Used AND (Table[i].AckReq OR Summary.AckAll OR (Summary.AckTop AND Summary.TopValid AND i = Summary.TopRow)) THEN
+    ack := Summary.AckAll;
+    IF Table[i].AckReq THEN
+      ack := ack OR Table[i].AckSeq = 0 OR Table[i].AckSeq = Table[i].Seq;
+    END_IF;
+    IF Summary.AckTop THEN
+      IF Summary.AckTopSeq <> 0 THEN
+        ack := ack OR Table[i].Seq = Summary.AckTopSeq;
+      ELSE
+        ack := ack OR (Summary.TopValid AND i = Summary.TopRow);
+      END_IF;
+    END_IF;
+    IF Table[i].Used AND ack THEN
       IF NOT Table[i].Acked THEN
         Table[i].Acked := TRUE;
         Table[i].Notify := Table[i].Notify OR BYTE#2;
       END_IF;
     END_IF;
     Table[i].AckReq := FALSE;
+    Table[i].AckSeq := 0;
     Table[i].Pending := Table[i].Notify;
     Table[i].Notify := BYTE#0;
     IF Table[i].Used AND NOT Table[i].Active AND Table[i].Acked THEN
@@ -166,6 +195,7 @@ FUNCTION HMI_ALARMS : BOOL
     END_IF;
   END_FOR;
   Summary.AckTop := FALSE;
+  Summary.AckTopSeq := 0;
   Summary.AckAll := FALSE;
   Summary.Count := 0;
   Summary.ActiveCount := 0;
@@ -202,11 +232,13 @@ FUNCTION HMI_ALARMS : BOOL
     Summary.TopSeverity := Table[top].Severity;
     Summary.TopMessage := Table[top].Message;
     Summary.TopRaised := Table[top].Raised;
+    Summary.TopSeq := Table[top].Seq;
   ELSE
     Summary.TopAcked := FALSE;
     Summary.TopId := 0;
     Summary.TopSeverity := 0;
     Summary.TopMessage := '';
+    Summary.TopSeq := 0;
   END_IF;
   HMI_ALARMS := has;
 END_FUNCTION
