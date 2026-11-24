@@ -1,6 +1,6 @@
 (* Base of every element that holds others; only containers may sit directly on a screen. Containers fill
-   the room their parent gives them unless GrowAuto is turned off. *)
-{attribute 'hmi_default' := 'GrowAuto := TRUE'}
+   the room their parent gives them unless AutoSize is turned off. *)
+{attribute 'hmi_default' := 'AutoSize := TRUE'}
 FUNCTION_BLOCK ABSTRACT HmiContainer EXTENDS HmiElement
   VAR_INPUT
     {attribute 'hmi_color'}
@@ -14,8 +14,9 @@ FUNCTION_BLOCK ABSTRACT HmiContainer EXTENDS HmiElement
   END_METHOD
 END_FUNCTION_BLOCK
 
-(* Base of the stacks. Sizes start from each child's measured size, then leftover space goes to the children that
-   grow and missing space is taken from all of them, within each child's minimum and maximum. *)
+(* Base of the stacks. Children with AutoSize take their Span, a percent of the length the other children leave,
+   scaled down when the spans add up to more than 100; the others keep their measured size and shrink in proportion,
+   within their minimum, when they do not fit. Every child fills the stack across. *)
 FUNCTION_BLOCK ABSTRACT HmiStack EXTENDS HmiContainer
   VAR_INPUT
     Gap : DINT := 8;
@@ -51,7 +52,7 @@ FUNCTION_BLOCK ABSTRACT HmiStack EXTENDS HmiContainer
     VAR
       i, pass : INT;
       horiz, clamped : BOOL;
-      main, cross, free, sumW, accW, w, share, t, lo, hi, pos, cs, sz : DINT;
+      main, cross, free, fixedLen, spans, den, avail, sumW, accW, w, share, t, lo, pos, cs, sz : DINT;
       c : POINTER TO HmiElement;
     END_VAR
     Left := PX;
@@ -70,32 +71,46 @@ FUNCTION_BLOCK ABSTRACT HmiStack EXTENDS HmiContainer
       main := main - Gap * INT_TO_DINT(VisibleKids() - 1);
     END_IF;
     main := MAX(main, 0);
+    (* Children that keep a pixel size first; children with AutoSize share what they leave. *)
     FOR i := 0 TO N - 1 DO
       c := Kids[i];
-      c^.SetLayFixed(NOT c^.Visible OR c^.Floating);
-      IF c^.IsLayFixed() THEN
+      c^.SetLayFixed(NOT c^.Visible OR c^.Floating OR c^.BySpan());
+      IF NOT c^.Visible OR c^.Floating THEN
+        c^.SetLaySize(0);
+      ELSIF c^.BySpan() THEN
+        spans := spans + MAX(c^.Span, 0);
         c^.SetLaySize(0);
       ELSE
         c^.SetLaySize(c^.Basis(horiz));
+        fixedLen := fixedLen + c^.GetLaySize();
       END_IF;
     END_FOR;
-    (* Each pass fixes the children that hit a limit, so at most N + 1 passes. *)
+    avail := MAX(main - fixedLen, 0);
+    den := MAX(spans, 100);
+    accW := 0;
+    FOR i := 0 TO N - 1 DO
+      c := Kids[i];
+      IF c^.BySpan() THEN
+        w := MAX(c^.Span, 0);
+        share := LINT_TO_DINT(DINT_TO_LINT(accW + w) * avail / den - DINT_TO_LINT(accW) * avail / den);
+        accW := accW + w;
+        c^.SetLaySize(c^.Limited(share, c^.MinAlong(horiz), c^.MaxAlong(horiz)));
+      END_IF;
+    END_FOR;
+    (* Pixel-sized children that do not fit shrink in proportion to their size, within their minimum; each pass fixes
+       the children that hit it, so at most N + 1 passes. *)
     FOR pass := 0 TO N DO
       free := main;
       FOR i := 0 TO N - 1 DO
         free := free - Kids[i]^.GetLaySize();
       END_FOR;
-      IF free = 0 THEN
+      IF free >= 0 THEN
         EXIT;
       END_IF;
       sumW := 0;
       FOR i := 0 TO N - 1 DO
         IF NOT Kids[i]^.IsLayFixed() THEN
-          IF free > 0 THEN
-            sumW := sumW + Kids[i]^.GetGrow(horiz);
-          ELSE
-            sumW := sumW + Kids[i]^.GetLaySize();
-          END_IF;
+          sumW := sumW + Kids[i]^.GetLaySize();
         END_IF;
       END_FOR;
       IF sumW = 0 THEN
@@ -108,21 +123,11 @@ FUNCTION_BLOCK ABSTRACT HmiStack EXTENDS HmiContainer
         sz := c^.GetLaySize();
         c^.SetLayWant(sz);
         IF NOT c^.IsLayFixed() THEN
-          IF free > 0 THEN
-            w := c^.GetGrow(horiz);
-          ELSE
-            w := sz;
-          END_IF;
-          share := LINT_TO_DINT(DINT_TO_LINT(accW + w) * free / sumW - DINT_TO_LINT(accW) * free / sumW);
-          accW := accW + w;
+          share := LINT_TO_DINT(DINT_TO_LINT(accW + sz) * free / sumW - DINT_TO_LINT(accW) * free / sumW);
+          accW := accW + sz;
           t := sz + share;
           lo := c^.MinAlong(horiz);
-          hi := c^.MaxAlong(horiz);
-          IF hi > 0 AND t > hi THEN
-            c^.SetLaySize(MAX(hi, sz));
-            c^.SetLayFixed(TRUE);
-            clamped := TRUE;
-          ELSIF t < lo THEN
+          IF t < lo THEN
             c^.SetLaySize(MIN(lo, sz));
             c^.SetLayFixed(TRUE);
             clamped := TRUE;
@@ -168,9 +173,9 @@ FUNCTION_BLOCK ABSTRACT HmiStack EXTENDS HmiContainer
       c := Kids[i];
       IF c^.Visible AND NOT c^.Floating THEN
         IF along THEN
-          acc := acc + c^.Basis(Horizontal);
+          acc := acc + c^.StackBasis(Horizontal);
         ELSE
-          acc := MAX(acc, c^.Basis(Horizontal));
+          acc := MAX(acc, c^.StackBasis(Horizontal));
         END_IF;
       END_IF;
     END_FOR;
