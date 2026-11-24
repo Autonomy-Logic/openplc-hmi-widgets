@@ -14,7 +14,7 @@ END_FUNCTION
 
 (* Filled rectangle, optionally rounded and outlined. *)
 {attribute 'hmi_palette' := 'Shapes'}
-{attribute 'hmi_default' := 'GrowAuto := TRUE'}
+{attribute 'hmi_default' := 'AutoSize := TRUE'}
 FUNCTION_BLOCK HmiRect EXTENDS HmiElement
   VAR_INPUT
     {attribute 'hmi_color'}
@@ -41,7 +41,7 @@ END_FUNCTION_BLOCK
 
 (* Filled ellipse inscribed in the element's rectangle, optionally outlined; a circle when the rectangle is square. *)
 {attribute 'hmi_palette' := 'Shapes'}
-{attribute 'hmi_default' := 'GrowAuto := TRUE'}
+{attribute 'hmi_default' := 'AutoSize := TRUE'}
 FUNCTION_BLOCK HmiEllipse EXTENDS HmiElement
   VAR_INPUT
     {attribute 'hmi_color'}
@@ -68,7 +68,7 @@ END_FUNCTION_BLOCK
 (* Regular polygon of 3 to 32 Sides inscribed in the element's rectangle, its first vertex at Rotation degrees
    (clockwise from 3 o'clock). InnerPct below 100 makes it a star, its inner vertices at that percent of the radius. *)
 {attribute 'hmi_palette' := 'Shapes'}
-{attribute 'hmi_default' := 'GrowAuto := TRUE'}
+{attribute 'hmi_default' := 'AutoSize := TRUE'}
 FUNCTION_BLOCK HmiPolygon EXTENDS HmiElement
   VAR_INPUT
     Sides : DINT := 3;
@@ -122,7 +122,7 @@ END_FUNCTION_BLOCK
 
 (* Straight line through the centre of the element's rectangle at Angle degrees: 0 across, 90 down, 45 diagonal. *)
 {attribute 'hmi_palette' := 'Shapes'}
-{attribute 'hmi_default' := 'GrowAuto := TRUE'}
+{attribute 'hmi_default' := 'AutoSize := TRUE'}
 FUNCTION_BLOCK HmiLine EXTENDS HmiElement
   VAR_INPUT
     Angle : DINT;
@@ -258,7 +258,7 @@ END_FUNCTION_BLOCK
 
 (* 270-degree arc gauge; the arc eases toward the value. *)
 {attribute 'hmi_palette' := 'Display'}
-{attribute 'hmi_default' := 'GrowAuto := TRUE'}
+{attribute 'hmi_default' := 'AutoSize := TRUE'}
 FUNCTION_BLOCK HmiGauge EXTENDS HmiElement
   VAR_INPUT
     {attribute 'hmi_main'}
@@ -426,7 +426,7 @@ END_FUNCTION_BLOCK
 (* Time graph of up to 8 series, Value then Value2 to Value8 as Pens counts them, each in its colour, sampled every
    SampleMs into 120 points. History starts with the screen and is not logged. *)
 {attribute 'hmi_palette' := 'Display'}
-{attribute 'hmi_default' := 'GrowAuto := TRUE'}
+{attribute 'hmi_default' := 'AutoSize := TRUE'}
 FUNCTION_BLOCK HmiTrend EXTENDS HmiPlotBase
   VAR_INPUT
     (* Series 1; series 2 to 8 are Value2 to Value8, drawn while Pens counts them. *)

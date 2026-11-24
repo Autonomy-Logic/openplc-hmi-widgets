@@ -51,14 +51,15 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
     MinHeight : DINT;
     {attribute 'hmi_group' := 'layout'}
     MaxHeight : DINT;
-    (* TRUE: takes a share of the space left over in its stack (GrowScale); FALSE: keeps its natural or preferred
-       size. A type may set its own default with hmi_default. *)
+    (* TRUE: in a stack, sized by Span and filling the stack across, pixel sizes ignored; FALSE: keeps its natural or
+       preferred size. A type may set its own default with hmi_default. *)
     {attribute 'hmi_group' := 'layout'}
-    GrowAuto : BOOL := FALSE;
-    (* Share of the space left over in the stack, relative to the other growing elements; used when GrowAuto is TRUE. *)
+    AutoSize : BOOL := FALSE;
+    (* Percent of its stack's length left by the elements that keep a pixel size; when a stack's spans add up to more
+       than 100 they are scaled down to fit. Used when AutoSize is TRUE. *)
     {attribute 'hmi_group' := 'layout'}
-    {attribute 'hmi_enabled_by' := 'GrowAuto'}
-    GrowScale : DINT := 1;
+    {attribute 'hmi_enabled_by' := 'AutoSize'}
+    Span : DINT := 100;
     (* Left out of container layout; the screen's code places it with Place. *)
     {attribute 'hmi_group' := 'layout'}
     Floating : BOOL;
@@ -384,13 +385,20 @@ FUNCTION_BLOCK ABSTRACT HmiElement IMPLEMENTS IHmiElement
     VAR_INPUT Horizontal : BOOL; END_VAR
     MaxAlong := SEL(Horizontal, MaxHeight, MaxWidth);
   END_METHOD
-  (* Share of leftover space along a stack running horizontally (Horizontal) or vertically. *)
-  METHOD INTERNAL GetGrow : DINT
+  (* Sized by Span in a stack: visible, laid out by its container and AutoSize. *)
+  METHOD INTERNAL BySpan : BOOL
+    BySpan := Visible AND NOT Floating AND AutoSize;
+  END_METHOD
+  (* Size along one axis a stack counts for its own natural size: the natural size, without pixel sizes, when
+     sized by Span. *)
+  METHOD INTERNAL StackBasis : DINT
     VAR_INPUT Horizontal : BOOL; END_VAR
-    IF Visible AND GrowAuto THEN
-      GetGrow := MAX(GrowScale, 0);
+    IF NOT BySpan() THEN
+      StackBasis := Basis(Horizontal);
+    ELSIF Horizontal THEN
+      StackBasis := Limited(NaturalWidth(), MinWidth, MaxWidth);
     ELSE
-      GetGrow := 0;
+      StackBasis := Limited(NaturalHeight(), MinHeight, MaxHeight);
     END_IF;
   END_METHOD
   (* Frame the element draws through, set by its container before Place. Ports: also report connection ports. *)
