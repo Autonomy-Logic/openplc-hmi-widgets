@@ -277,7 +277,7 @@ END_FUNCTION_BLOCK
    the filter shows active alarms or all. Drag to scroll. *)
 {attribute 'hmi_palette' := 'Alarms'}
 {attribute 'hmi_requires' := 'hmiDataWidgets'}
-{attribute 'hmi_default' := 'GrowAuto := TRUE'}
+{attribute 'hmi_default' := 'AutoSize := TRUE'}
 FUNCTION_BLOCK HmiAlarmList EXTENDS HmiDataElement
   VAR_INPUT
     (* The program's alarm table, an ARRAY OF HMI_ALARM_ROW, by name. *)
@@ -533,7 +533,7 @@ END_FUNCTION_BLOCK
    message. Source names the program's ARRAY OF HMI_EVENT_ROW. The entries scroll by dragging. *)
 {attribute 'hmi_palette' := 'Alarms'}
 {attribute 'hmi_requires' := 'hmiDataWidgets'}
-{attribute 'hmi_default' := 'GrowAuto := TRUE'}
+{attribute 'hmi_default' := 'AutoSize := TRUE'}
 FUNCTION_BLOCK HmiEventLog EXTENDS HmiDataElement
   VAR_INPUT
     (* The program's event log, an ARRAY OF HMI_EVENT_ROW, by name. *)
@@ -675,7 +675,7 @@ END_FUNCTION_BLOCK
 (* Y against X from arrays of numbers, up to four series as Series counts them, each its own pair of sources (a
    series without an X source uses the first one's), with a marker at LiveX, LiveY when ShowLive. *)
 {attribute 'hmi_palette' := 'Data'}
-{attribute 'hmi_default' := 'GrowAuto := TRUE'}
+{attribute 'hmi_default' := 'AutoSize := TRUE'}
 FUNCTION_BLOCK HmiXYPlot EXTENDS HmiPlotBase
   VAR_INPUT
     {attribute 'hmi_source' := 'ARRAY OF REAL'}
